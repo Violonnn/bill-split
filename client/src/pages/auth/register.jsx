@@ -1,12 +1,22 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { apiRequest } from '../../api/client.js';
+import { useAuth } from '../../context/AuthContext.jsx';
+
+// Reusable check: spaces-only or containing spaces is invalid
+const hasInvalidSpaces = (value) => {
+  if (value == null || typeof value !== 'string') return true;
+  const trimmed = value.trim();
+  return trimmed.length === 0 || /\s/.test(trimmed);
+};
 
 export default function Register() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
-    firstName: '',
     lastName: '',
+    firstName: '',
     nickname: '',
     email: '',
     username: '',
@@ -19,16 +29,22 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [checkingNickname, setCheckingNickname] = useState(false);
 
-  // Validation rules
+  // Validation rules - spaces are not valid input per requirements
   const validateField = (name, value) => {
     const newErrors = { ...errors };
 
     switch (name) {
       case 'firstName':
-        if (!value.trim()) {
+        if (!value?.trim()) {
           newErrors.firstName = 'First name is required';
-        } else if (value.length < 2) {
+        } else if (hasInvalidSpaces(value)) {
+          newErrors.firstName = 'Spaces are not valid input';
+        } else if (value.trim().length < 2) {
           newErrors.firstName = 'First name must be at least 2 characters';
         } else {
           delete newErrors.firstName;
@@ -36,9 +52,11 @@ export default function Register() {
         break;
 
       case 'lastName':
-        if (!value.trim()) {
+        if (!value?.trim()) {
           newErrors.lastName = 'Last name is required';
-        } else if (value.length < 2) {
+        } else if (hasInvalidSpaces(value)) {
+          newErrors.lastName = 'Spaces are not valid input';
+        } else if (value.trim().length < 2) {
           newErrors.lastName = 'Last name must be at least 2 characters';
         } else {
           delete newErrors.lastName;
@@ -46,9 +64,11 @@ export default function Register() {
         break;
 
       case 'nickname':
-        if (!value.trim()) {
+        if (!value?.trim()) {
           newErrors.nickname = 'Nickname is required';
-        } else if (value.length < 3) {
+        } else if (hasInvalidSpaces(value)) {
+          newErrors.nickname = 'Spaces are not valid input';
+        } else if (value.trim().length < 3) {
           newErrors.nickname = 'Nickname must be at least 3 characters';
         } else {
           delete newErrors.nickname;
@@ -57,9 +77,9 @@ export default function Register() {
 
       case 'email':
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!value.trim()) {
+        if (!value?.trim()) {
           newErrors.email = 'Email is required';
-        } else if (!emailRegex.test(value)) {
+        } else if (!emailRegex.test(value.trim())) {
           newErrors.email = 'Please enter a valid email address';
         } else {
           delete newErrors.email;
@@ -67,11 +87,13 @@ export default function Register() {
         break;
 
       case 'username':
-        if (!value.trim()) {
+        if (!value?.trim()) {
           newErrors.username = 'Username is required';
-        } else if (value.length < 3) {
+        } else if (hasInvalidSpaces(value)) {
+          newErrors.username = 'Spaces are not valid input';
+        } else if (value.trim().length < 3) {
           newErrors.username = 'Username must be at least 3 characters';
-        } else if (!/^[a-zA-Z0-9_]+$/.test(value)) {
+        } else if (!/^[a-zA-Z0-9_]+$/.test(value.trim())) {
           newErrors.username = 'Username can only contain letters, numbers, and underscores';
         } else {
           delete newErrors.username;
@@ -137,6 +159,50 @@ export default function Register() {
     }
   };
 
+  // Check username uniqueness on blur - clears "already taken" when available
+  const checkUsernameUnique = useCallback(async (username) => {
+    if (!username?.trim() || username.trim().length < 3) return;
+    setCheckingUsername(true);
+    try {
+      const res = await apiRequest(`/api/auth/check-username?username=${encodeURIComponent(username.trim())}`);
+      setErrors((prev) => {
+        const next = { ...prev };
+        if (!res.available) {
+          next.username = 'Username is already taken';
+        } else if (next.username === 'Username is already taken') {
+          delete next.username;
+        }
+        return next;
+      });
+    } catch {
+      // Network error - keep previous error state
+    } finally {
+      setCheckingUsername(false);
+    }
+  }, []);
+
+  // Check nickname uniqueness on blur - clears "already taken" when available
+  const checkNicknameUnique = useCallback(async (nickname) => {
+    if (!nickname?.trim() || nickname.trim().length < 3) return;
+    setCheckingNickname(true);
+    try {
+      const res = await apiRequest(`/api/auth/check-nickname?nickname=${encodeURIComponent(nickname.trim())}`);
+      setErrors((prev) => {
+        const next = { ...prev };
+        if (!res.available) {
+          next.nickname = 'Nickname is already taken';
+        } else if (next.nickname === 'Nickname is already taken') {
+          delete next.nickname;
+        }
+        return next;
+      });
+    } catch {
+      // Network error - keep previous error state
+    } finally {
+      setCheckingNickname(false);
+    }
+  }, []);
+
   const handleBlur = (e) => {
     const { name, value } = e.target;
     setTouched((prev) => ({
@@ -144,25 +210,106 @@ export default function Register() {
       [name]: true,
     }));
     validateField(name, value);
+    if (name === 'username') checkUsernameUnique(value);
+    if (name === 'nickname') checkNicknameUnique(value);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validate all fields
+    // Mark all fields touched and validate
+    const allTouched = Object.fromEntries(Object.keys(formData).map((k) => [k, true]));
+    setTouched(allTouched);
+    Object.keys(formData).forEach((key) => validateField(key, formData[key]));
+
+    // Build fresh errors to avoid stale state
+    const freshErrors = {};
     Object.keys(formData).forEach((key) => {
-      validateField(key, formData[key]);
-      setTouched((prev) => ({
-        ...prev,
-        [key]: true,
-      }));
+      const err = runValidation(key, formData[key]);
+      if (err) freshErrors[key] = err;
     });
 
-    // Check if form is valid
-    const hasErrors = Object.keys(errors).length > 0;
-    if (!hasErrors) {
-      console.log('Form submitted:', formData);
-      // TODO: Send to backend
+    if (Object.keys(freshErrors).length > 0) {
+      setErrors(freshErrors);
+      return;
+    }
+
+    setSubmitError('');
+    setSubmitting(true);
+
+    try {
+      const data = await apiRequest('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          nickname: formData.nickname.trim(),
+          email: formData.email.trim(),
+          username: formData.username.trim(),
+          password: formData.password,
+          confirmPassword: formData.confirmPassword,
+        }),
+      });
+
+      if (data.requireEmailConfirmation) {
+        navigate('/login', { state: { checkEmail: true, email: data.email } });
+        return;
+      }
+
+      login(data.user, data.token);
+      navigate('/dashboard', { state: { fromRegistration: true } });
+    } catch (err) {
+      setSubmitError(err.data?.errors ? Object.values(err.data.errors).join('. ') : err.message || 'Registration failed.');
+      if (err.data?.errors) setErrors(err.data.errors);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Reusable validation - returns error string or null. Spaces are not valid input.
+  const runValidation = (name, value) => {
+    switch (name) {
+      case 'firstName':
+        if (!value?.trim()) return 'First name is required';
+        if (hasInvalidSpaces(value)) return 'Spaces are not valid input';
+        if (value.trim().length < 2) return 'First name must be at least 2 characters';
+        return null;
+      case 'lastName':
+        if (!value?.trim()) return 'Last name is required';
+        if (hasInvalidSpaces(value)) return 'Spaces are not valid input';
+        if (value.trim().length < 2) return 'Last name must be at least 2 characters';
+        return null;
+      case 'nickname':
+        if (!value?.trim()) return 'Nickname is required';
+        if (hasInvalidSpaces(value)) return 'Spaces are not valid input';
+        if (value.trim().length < 3) return 'Nickname must be at least 3 characters';
+        return null;
+      case 'email':
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!value?.trim()) return 'Email is required';
+        if (!emailRegex.test(value.trim())) return 'Please enter a valid email address';
+        return null;
+      case 'username':
+        if (!value?.trim()) return 'Username is required';
+        if (hasInvalidSpaces(value)) return 'Spaces are not valid input';
+        if (value.trim().length < 3) return 'Username must be at least 3 characters';
+        if (!/^[a-zA-Z0-9_]+$/.test(value.trim())) return 'Username can only contain letters, numbers, and underscores';
+        return null;
+      case 'password':
+        const hasUC = /[A-Z]/.test(value);
+        const hasLC = /[a-z]/.test(value);
+        if (!value) return 'Password is required';
+        if (value.length < 8 || value.length > 16) return 'Password must be 8-16 characters long';
+        if (!hasUC || !hasLC) return 'Password must contain upper and lower case letters';
+        if (!/[0-9]/.test(value)) return 'Password must contain at least one number';
+        if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(value)) return 'Password must contain at least one special character';
+        return null;
+      case 'confirmPassword':
+        if (!value) return 'Confirm password is required';
+        if (value !== formData.password) return 'Passwords do not match';
+        return null;
+      default:
+        return null;
     }
   };
 
@@ -180,7 +327,18 @@ export default function Register() {
     return 'Strong';
   };
 
-  const isFormValid = Object.keys(errors).length === 0 && Object.values(formData).every((v) => v.trim());
+  // Form is valid when no errors and all required fields have non-empty, non-space-only values
+  const isFormValid =
+    Object.keys(errors).length === 0 &&
+    formData.lastName.trim() &&
+    formData.firstName.trim() &&
+    formData.nickname.trim() &&
+    formData.email.trim() &&
+    formData.username.trim() &&
+    formData.password &&
+    formData.confirmPassword &&
+    !checkingUsername &&
+    !checkingNickname;
 
   return (
    <div className="h-screen w-screen flex">
@@ -225,34 +383,10 @@ export default function Register() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* First Name & Last Name (2 columns) */}
+            {/* Last Name & First Name (per spec order) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* First Name */}
               <div>
-                <input
-                  type="text"
-                  name="firstName"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                    touched.firstName && errors.firstName
-                      ? 'border-red-500 focus:ring-red-300'
-                      : touched.firstName
-                      ? 'border-green-500 focus:ring-green-300'
-                      : 'border-gray-300 focus:ring-[#06B6D4]'
-                  }`}
-                  placeholder="First Name"
-                />
-                {touched.firstName && errors.firstName && (
-                  <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
-                    <AlertCircle size={12} /> {errors.firstName}
-                  </div>
-                )}
-              </div>
-
-              {/* Last Name */}
-              <div>
+                <label className="sr-only">Last Name</label>
                 <input
                   type="text"
                   name="lastName"
@@ -266,7 +400,7 @@ export default function Register() {
                       ? 'border-green-500 focus:ring-green-300'
                       : 'border-gray-300 focus:ring-[#06B6D4]'
                   }`}
-                  placeholder="Last Name"
+                  placeholder="Last Name *"
                 />
                 {touched.lastName && errors.lastName && (
                   <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
@@ -274,25 +408,53 @@ export default function Register() {
                   </div>
                 )}
               </div>
+              <div>
+                <label className="sr-only">First Name</label>
+                <input
+                  type="text"
+                  name="firstName"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
+                    touched.firstName && errors.firstName
+                      ? 'border-red-500 focus:ring-red-300'
+                      : touched.firstName
+                      ? 'border-green-500 focus:ring-green-300'
+                      : 'border-gray-300 focus:ring-[#06B6D4]'
+                  }`}
+                  placeholder="First Name *"
+                />
+                {touched.firstName && errors.firstName && (
+                  <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                    <AlertCircle size={12} /> {errors.firstName}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Nickname */}
-            <div>
+            {/* Nickname - required, must be unique */}
+            <div className="relative">
               <input
                 type="text"
                 name="nickname"
                 value={formData.nickname}
                 onChange={handleChange}
                 onBlur={handleBlur}
-                className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
+                className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm pr-10 ${
                   touched.nickname && errors.nickname
                     ? 'border-red-500 focus:ring-red-300'
                     : touched.nickname
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
-                placeholder="Nickname (must be unique)"
+                placeholder="Nickname * (must be unique)"
               />
+              {checkingNickname && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
+                  <Loader2 size={18} className="animate-spin" />
+                </div>
+              )}
               {touched.nickname && errors.nickname && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.nickname}
@@ -300,7 +462,7 @@ export default function Register() {
               )}
             </div>
 
-            {/* Email */}
+            {/* Email - required, valid format */}
             <div>
               <input
                 type="email"
@@ -315,7 +477,7 @@ export default function Register() {
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
-                placeholder="Email"
+                placeholder="Email *"
               />
               {touched.email && errors.email && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
@@ -324,23 +486,28 @@ export default function Register() {
               )}
             </div>
 
-            {/* Username */}
-            <div>
+            {/* Username - required, must be unique */}
+            <div className="relative">
               <input
                 type="text"
                 name="username"
                 value={formData.username}
                 onChange={handleChange}
                 onBlur={handleBlur}
-                className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
+                className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm pr-10 ${
                   touched.username && errors.username
                     ? 'border-red-500 focus:ring-red-300'
                     : touched.username
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
-                placeholder="Username (must be unique)"
+                placeholder="Username * (must be unique)"
               />
+              {checkingUsername && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">
+                  <Loader2 size={18} className="animate-spin" />
+                </div>
+              )}
               {touched.username && errors.username && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.username}
@@ -468,10 +635,16 @@ export default function Register() {
               )}
             </div>
 
+            {submitError && (
+              <div className="flex items-center gap-1 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
+                <AlertCircle size={16} /> {submitError}
+              </div>
+            )}
+
             <div className="flex justify-center mt-8">
               <button
                 type="submit"
-                disabled={!isFormValid}
+                disabled={!isFormValid || submitting}
                 className={`  px-4 py-2
                   bg-gradient-to-r from-[#164E63] to-[#0E7490]
                   text-white text-sm lg:text-base
@@ -488,7 +661,7 @@ export default function Register() {
                     : 'bg-gray-400 cursor-not-allowed opacity-100'
                 }`}
               >
-                Sign Up
+                {submitting ? 'Creating Account...' : 'Sign Up'}
               </button>
             </div>
 

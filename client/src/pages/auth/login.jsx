@@ -1,9 +1,14 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { apiRequest } from '../../api/client.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -12,6 +17,26 @@ export default function Login() {
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    if (searchParams.get('verified') === '1') {
+      setSuccessMessage('Email verified! You can now sign in.');
+      setSearchParams({}, { replace: true });
+    }
+    if (searchParams.get('error')) {
+      setErrors({ username: searchParams.get('error') });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  // Show check-email message when redirected from registration with email confirmation
+  useEffect(() => {
+    if (location.state?.checkEmail) {
+      setSuccessMessage(`A confirmation email has been sent. Please check your inbox and click the link to activate your account, then sign in below.`);
+    }
+  }, [location.state?.checkEmail]);
 
   // Validation rules
   const validateField = (name, value) => {
@@ -29,8 +54,6 @@ export default function Login() {
       case 'password':
         if (!value) {
           newErrors.password = 'Password is required';
-        } else if (value.length < 8) {
-          newErrors.password = 'Password must be at least 8 characters';
         } else {
           delete newErrors.password;
         }
@@ -64,27 +87,43 @@ export default function Login() {
     validateField(name, value);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validate all fields
-    Object.keys(formData).forEach((key) => {
-      validateField(key, formData[key]);
-      setTouched((prev) => ({
-        ...prev,
-        [key]: true,
-      }));
-    });
+    const freshErrors = {};
+    if (!formData.username?.trim()) freshErrors.username = 'Username or email is required';
+    if (!formData.password) freshErrors.password = 'Password is required';
 
-    // Check if form is valid
-    const hasErrors = Object.keys(errors).length > 0;
-    if (!hasErrors) {
-      console.log('Login submitted:', formData);
-      // TODO: Send to backend
+    setTouched({ username: true, password: true });
+    setErrors(freshErrors);
+
+    if (Object.keys(freshErrors).length > 0) return;
+
+    setSubmitting(true);
+    setSuccessMessage('');
+
+    try {
+      const { user: userData, token } = await apiRequest('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: formData.username.trim(),
+          password: formData.password,
+        }),
+      });
+
+      login(userData, token);
+      navigate('/dashboard');
+    } catch (err) {
+      const msg = err.data?.code === 'EMAIL_NOT_VERIFIED'
+        ? err.data.error
+        : (err.message || 'Incorrect username or password');
+      setErrors({ username: msg });
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const isFormValid = Object.keys(errors).length === 0 && Object.values(formData).every((v) => v.trim());
+  const isFormValid = !!formData.username?.trim() && !!formData.password;
 
   return (
     <div className="h-screen w-screen flex">
@@ -186,6 +225,13 @@ export default function Login() {
               )}
             </div>
 
+            {successMessage && (
+              <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
+                <span className="flex-shrink-0">✓</span>
+                {successMessage}
+              </div>
+            )}
+
             {/* Forgot Password Link */}
             <div className="text-right">
               <button
@@ -201,7 +247,7 @@ export default function Login() {
             <div className="flex justify-center mt-8">
               <button
                 type="submit"
-                disabled={!isFormValid}
+                disabled={!isFormValid || submitting}
                 className={`  px-4 py-2
                   bg-gradient-to-r from-[#164E63] to-[#0E7490]
                   text-white text-sm lg:text-base
@@ -217,7 +263,7 @@ export default function Login() {
                     : 'bg-gray-400 cursor-not-allowed opacity-100'
                 }`}
               >
-                Sign In
+                {submitting ? 'Signing In...' : 'Sign In'}
               </button>
             </div>
 

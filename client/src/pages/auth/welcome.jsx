@@ -1,13 +1,41 @@
-import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { Wallet, Receipt, Users, Calculator, BarChart3, TrendingUp, Heart, Menu } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Wallet, Receipt, Users, Calculator, BarChart3, TrendingUp, Heart, Menu, Mail } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 export default function Welcome() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [invitationCode, setInvitationCode] = useState('');
+  const [showRegistrationBanner, setShowRegistrationBanner] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.fromRegistration) {
+      setShowRegistrationBanner(true);
+      navigate(location.pathname, { replace: true, state: {} });
+      const t = setTimeout(() => setShowRegistrationBanner(false), 8000);
+      return () => clearTimeout(t);
+    }
+  }, [location.state?.fromRegistration, location.pathname, navigate]);
+
+  // Redirect registered users to dashboard when they visit the landing page
+  useEffect(() => {
+    if (user && user.userType !== 'guest') {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
 
   return (
     <div className="min-h-screen w-full bg-[#F0F9FA] text-gray-800 overflow-x-hidden">
+
+      {showRegistrationBanner && (
+        <div className="sticky top-0 z-[60] bg-gradient-to-r from-[#164E63] to-[#0E7490] text-white px-4 py-3 flex items-center justify-center gap-2 text-sm sm:text-base">
+          <Mail size={18} className="flex-shrink-0" />
+          <span>Registration successful! A confirmation email has been sent. You can now use your account or log in anytime.</span>
+        </div>
+      )}
 
       {/* ================= NAVBAR ================= */}
       <nav className="fixed top-0 w-full flex justify-between items-center px-4 sm:px-8 lg:px-16 py-4 bg-white shadow-lg border-b-2 border-[#06B6D4] z-50">
@@ -15,7 +43,27 @@ export default function Welcome() {
 
         {/* Desktop Menu */}
         <div className="hidden md:flex gap-3 lg:gap-4 items-center">
-
+            {user ? (
+              <>
+                <span className="text-gray-700 text-sm font-medium truncate max-w-[120px]">{user.firstName || user.nickname}</span>
+                {user.userType === 'guest' ? (
+                  <>
+                    <button onClick={() => navigate('/guest/join')} className="text-sm px-3 py-1.5 bg-[#06B6D4] text-white rounded-lg font-medium hover:bg-[#0891b2]">
+                      Enter Invitation Code
+                    </button>
+                    <button onClick={() => navigate('/guest/upgrade')} className="text-sm px-3 py-1.5 border-2 border-[#06B6D4] text-[#06B6D4] rounded-lg font-medium hover:bg-[#06B6D4]/10">
+                      Upgrade Account
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => navigate('/dashboard')} className="text-sm px-3 py-1.5 bg-[#06B6D4] text-white rounded-lg font-medium hover:bg-[#0891b2]">
+                    Dashboard
+                  </button>
+                )}
+                <button onClick={logout} className="text-sm text-gray-700 hover:text-[#0E7490] font-medium">Logout</button>
+              </>
+            ) : (
+            <>
             <button onClick={() => navigate('/login')} className="
                 relative
                 text-sm lg:text-base
@@ -45,8 +93,8 @@ export default function Welcome() {
                 ">
                 Register
             </button>
-
-    
+            </>
+            )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -63,15 +111,26 @@ export default function Welcome() {
         {mobileMenuOpen && (
           <div className="absolute top-full left-0 right-0 bg-white border-b-2 border-[#06B6D4] md:hidden">
             <div className="flex flex-col gap-2 p-4">
-              <button onClick={() => navigate('/login')} className="text-left text-gray-700 hover:text-[#06B6D4] transition font-medium py-2">
-                Login
-              </button>
-              <button onClick={() => navigate('/register')} className="text-left text-gray-700 hover:text-[#06B6D4] transition font-medium py-2">
-                Register
-              </button>
-              <button className="w-full px-4 py-2 bg-[#06B6D4] text-white rounded-md hover:bg-[#164E63] transition shadow-md text-sm font-medium">
-                Enter Invitation Code
-              </button>
+              {user ? (
+                <>
+                  <span className="text-gray-700 py-2">{user.firstName || user.nickname}</span>
+                  {user.userType === 'guest' ? (
+                    <>
+                      <button onClick={() => { navigate('/guest/join'); setMobileMenuOpen(false); }} className="w-full px-4 py-2 bg-[#06B6D4] text-white rounded-md text-sm font-medium">Enter Invitation Code</button>
+                      <button onClick={() => { navigate('/guest/upgrade'); setMobileMenuOpen(false); }} className="w-full px-4 py-2 border-2 border-[#06B6D4] text-[#06B6D4] rounded-md text-sm font-medium">Upgrade Account</button>
+                    </>
+                  ) : (
+                    <button onClick={() => { navigate('/dashboard'); setMobileMenuOpen(false); }} className="w-full px-4 py-2 bg-[#06B6D4] text-white rounded-md text-sm font-medium">Dashboard</button>
+                  )}
+                  <button onClick={logout} className="text-left text-gray-700 hover:text-[#06B6D4] transition font-medium py-2">Logout</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => { navigate('/login'); setMobileMenuOpen(false); }} className="text-left text-gray-700 hover:text-[#06B6D4] transition font-medium py-2">Login</button>
+                  <button onClick={() => { navigate('/register'); setMobileMenuOpen(false); }} className="text-left text-gray-700 hover:text-[#06B6D4] transition font-medium py-2">Register</button>
+                  <button onClick={() => { navigate(`/guest/join${invitationCode ? `?code=${invitationCode}` : ''}`); setMobileMenuOpen(false); }} className="w-full px-4 py-2 bg-[#06B6D4] text-white rounded-md hover:bg-[#164E63] transition shadow-md text-sm font-medium">Enter Invitation Code</button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -91,7 +150,7 @@ export default function Welcome() {
           </p>
 
           <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
-            <button onClick={() => navigate('/register')} 
+            <button onClick={() => navigate(user ? '/dashboard' : '/register')} 
             className="
                 px-4 py-2
                 bg-gradient-to-r from-[#164E63] to-[#0E7490]
@@ -105,19 +164,10 @@ export default function Welcome() {
               Get Started
             </button>
 
-            <button className="  relative
-                text-sm lg:text-base
-                text-gray-700
-                font-medium
-                px-3 py-2
-                rounded-md
-                transition-all duration-300 ease-in-out
-                hover:text-[#0E7490]
-                hover:bg-[#0E7490]
-                active:scale-95
-                focus:outline-none
-                border-none
-                focus:ring-2 focus:ring-[#164E63]">
+            <button
+              onClick={() => navigate('/guest/join')}
+              className="relative text-sm lg:text-base text-gray-700 font-medium px-3 py-2 rounded-md transition-all duration-300 ease-in-out hover:text-[#0E7490] hover:bg-[#0E7490] active:scale-95 focus:outline-none border-none focus:ring-2 focus:ring-[#164E63]"
+            >
               Enter Invitation Code
             </button>
           </div>
@@ -274,7 +324,7 @@ export default function Welcome() {
       {/* ================= GUEST ACCESS ================= */}
       <section className="w-full px-4 sm:px-8 lg:px-20 py-16 sm:py-20 text-center bg-gradient-to-r from-[#06B6D4] to-[#164E63]">
         <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-4 sm:mb-6">
-          Don't Have an Account?
+          Don&apos;t Have an Account?
         </h3>
         <p className="text-sm sm:text-base text-cyan-100 mb-6 sm:mb-8 max-w-2xl mx-auto px-4">
           No problem! Use an invitation code to join a bill as a guest and start splitting instantly.
@@ -283,11 +333,16 @@ export default function Welcome() {
         <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 max-w-2xl mx-auto px-4">
           <input
             type="text"
+            value={invitationCode}
+            onChange={(e) => setInvitationCode(e.target.value.toUpperCase())}
             placeholder="Enter Invitation Code"
-            className="px-4 py-3 rounded-lg border-2 border-[#67E8F9] w-full text-sm sm:text-base focus:outline-none focus:border-white focus:ring-2 focus:ring-[#67E8F9] bg-white"
+            className="px-4 py-3 rounded-lg border-2 border-[#67E8F9] w-full text-sm sm:text-base focus:outline-none focus:border-white focus:ring-2 focus:ring-[#67E8F9] bg-white uppercase"
           />
 
-          <button className="px-6 py-3 bg-[#67E8F9] text-[#164E63] rounded-lg hover:bg-white transition shadow-lg whitespace-nowrap text-sm sm:text-base font-bold hover:shadow-xl border-2 border-[#67E8F9] hover:border-white">
+          <button
+            onClick={() => navigate(invitationCode ? `/guest/join?code=${invitationCode}` : '/guest/join')}
+            className="px-6 py-3 bg-[#67E8F9] text-[#164E63] rounded-lg hover:bg-white transition shadow-lg whitespace-nowrap text-sm sm:text-base font-bold hover:shadow-xl border-2 border-[#67E8F9] hover:border-white"
+          >
             Access Bill
           </button>
         </div>
