@@ -2,26 +2,35 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { Receipt, Copy, Check, AlertCircle } from 'lucide-react';
+import MainLayout from '../components/MainLayout';
+import { Card, CardBody, CardHeader } from '../components/Card';
+import { Button } from '../components/Button';
+import EmptyState from '../components/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner';
+import Alert from '../components/Alert';
+import Modal from '../components/Modal';
+import { Plus, TrendingUp, Archive, AlertCircle, Copy, Check } from 'lucide-react';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [joining, setJoining] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [joinCode, setJoinCode] = useState('');
   const [createError, setCreateError] = useState('');
-  const [joinError, setJoinError] = useState('');
   const [copiedCode, setCopiedCode] = useState('');
 
   const fetchBills = useCallback(async () => {
     try {
+      setLoading(true);
       const { bills: list } = await apiRequest('/api/bills');
-      setBills(list || []);
+      setBills(list?.filter(b => !b.archived) || []);
+      setError('');
     } catch (err) {
+      setError(err.message || 'Failed to load bills');
       setBills([]);
     } finally {
       setLoading(false);
@@ -39,7 +48,7 @@ export default function Dashboard() {
   const handleCreateBill = async (e) => {
     e.preventDefault();
     if (!newTitle?.trim()) {
-      setCreateError('Bill title is required');
+      setCreateError('Bill name is required');
       return;
     }
 
@@ -47,38 +56,17 @@ export default function Dashboard() {
     setCreateError('');
 
     try {
-      const { bill, invitationCode } = await apiRequest('/api/bills', {
+      const { bill } = await apiRequest('/api/bills', {
         method: 'POST',
         body: JSON.stringify({ title: newTitle.trim() }),
       });
-      setBills((prev) => [{ ...bill, invitationCode }, ...prev]);
+      setBills((prev) => [bill, ...prev]);
       setNewTitle('');
+      setShowCreateModal(false);
     } catch (err) {
       setCreateError(err.message || 'Failed to create bill');
     } finally {
       setCreating(false);
-    }
-  };
-
-  const handleJoinBill = async (e) => {
-    e.preventDefault();
-    if (!joinCode?.trim()) {
-      setJoinError('Invitation code is required');
-      return;
-    }
-    setJoining(true);
-    setJoinError('');
-    try {
-      const { bill } = await apiRequest(`/api/bills/${encodeURIComponent(joinCode.trim().toUpperCase())}/join`, {
-        method: 'POST',
-        body: JSON.stringify({ code: joinCode.trim().toUpperCase() }),
-      });
-      setBills((prev) => [bill, ...prev].filter((b, i, arr) => arr.findIndex((x) => x._id === b._id) === i));
-      setJoinCode('');
-    } catch (err) {
-      setJoinError(err.message || 'Failed to join bill');
-    } finally {
-      setJoining(false);
     }
   };
 
@@ -90,109 +78,196 @@ export default function Dashboard() {
 
   if (!user || user.userType === 'guest') return null;
 
+  const activeBills = bills.filter(b => !b.archived);
+  const totalAmount = activeBills.reduce((sum, bill) => {
+    const expenses = bill.expenses || [];
+    return sum + expenses.reduce((billSum, exp) => billSum + (exp.amount || 0), 0);
+  }, 0);
+
   return (
-    <div className="min-h-screen w-full bg-[#F0F9FA]">
-      <nav className="w-full bg-white border-b-2 border-[#06B6D4] px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-[#06B6D4]">BillSplit</h1>
-        <button onClick={() => { logout(); navigate('/'); }} className="text-[#06B6D4] hover:text-[#0891b2] font-medium">
-          Sign Out
-        </button>
-      </nav>
+    <MainLayout title="Dashboard">
+      {error && (
+        <Alert type="error" title="Error" message={error} />
+      )}
 
-      <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-8">
-        <h2 className="text-2xl sm:text-3xl font-bold text-[#164E63] mb-6">My Bills</h2>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <form onSubmit={handleCreateBill} className="p-4 bg-white rounded-xl shadow-md border-2 border-[#06B6D4]">
-            <h3 className="font-semibold text-[#164E63] mb-2">Create New Bill</h3>
-            {createError && (
-              <div className="flex items-center gap-1 mb-2 text-red-600 text-sm">
-                <AlertCircle size={14} /> {createError}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Bill title"
-                className="flex-1 px-3 py-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
-              />
-              <button
-                type="submit"
-                disabled={creating}
-                className="px-4 py-2 bg-[#06B6D4] text-white rounded-lg font-medium hover:bg-[#0891b2] disabled:opacity-70 shrink-0"
-              >
-                {creating ? 'Creating...' : 'Create'}
-              </button>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <CardBody className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-600 text-sm font-medium">Active Bills</p>
+              <p className="text-4xl font-bold text-blue-900 mt-2">{activeBills.length}</p>
             </div>
-            <p className="text-xs text-gray-500 mt-2">Share the invitation code with others to add them (max 3 per bill for Standard).</p>
-          </form>
-
-          <form onSubmit={handleJoinBill} className="p-4 bg-white rounded-xl shadow-md border-2 border-[#67E8F9]">
-            <h3 className="font-semibold text-[#164E63] mb-2">Join Bill with Invitation Code</h3>
-            {joinError && (
-              <div className="flex items-center gap-1 mb-2 text-red-600 text-sm">
-                <AlertCircle size={14} /> {joinError}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="INVITATION CODE"
-                className="flex-1 px-3 py-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] uppercase font-mono"
-              />
-              <button
-                type="submit"
-                disabled={joining}
-                className="px-4 py-2 bg-[#0891b2] text-white rounded-lg font-medium hover:bg-[#06B6D4] disabled:opacity-70 shrink-0"
-              >
-                {joining ? 'Joining...' : 'Join'}
-              </button>
+            <div className="p-3 bg-blue-200 rounded-lg">
+              <TrendingUp size={32} className="text-blue-600" />
             </div>
-          </form>
+          </CardBody>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+          <CardBody className="flex items-center justify-between">
+            <div>
+              <p className="text-green-600 text-sm font-medium">Total Amount</p>
+              <p className="text-4xl font-bold text-green-900 mt-2">
+                ${totalAmount.toFixed(2)}
+              </p>
+            </div>
+            <div className="p-3 bg-green-200 rounded-lg">
+              <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M8.16 2.75a.75.75 0 00-.75.75v4a.75.75 0 001.5 0V3.5a.75.75 0 00-.75-.75zM13.75 3.5a.75.75 0 00-1.5 0v4a.75.75 0 001.5 0V3.5zM10 8a.75.75 0 00-.75.75v10a.75.75 0 001.5 0v-10A.75.75 0 0010 8z" />
+              </svg>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <CardBody className="flex items-center justify-between">
+            <div>
+              <p className="text-purple-600 text-sm font-medium">Members</p>
+              <p className="text-4xl font-bold text-purple-900 mt-2">
+                {new Set(activeBills.flatMap(b => (b.members || []).map(m => m._id))).size}
+              </p>
+            </div>
+            <div className="p-3 bg-purple-200 rounded-lg">
+              <svg className="w-8 h-8 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.615 16.428a1.224 1.224 0 00-.569 1.175 6.002 6.002 0 0011.908 0 1.224 1.224 0 00-.569-1.175 9.953 9.953 0 00-5.885-1.303 9.953 9.953 0 00-5.885 1.303z" />
+              </svg>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Recent Bills */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Recent Bills</h2>
+          <Button
+            variant="primary"
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus size={20} />
+            Create New Bill
+          </Button>
         </div>
 
         {loading ? (
-          <p className="text-gray-600">Loading...</p>
-        ) : bills.length === 0 ? (
-          <div className="p-6 bg-white rounded-xl shadow border border-gray-200 text-center text-gray-600">
-            No bills yet. Create one above.
-          </div>
+          <LoadingSpinner />
+        ) : activeBills.length === 0 ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="No Bills Yet"
+            message="Create your first bill to start splitting expenses with friends!"
+          >
+            <Button variant="primary" onClick={() => setShowCreateModal(true)}>
+              Create Your First Bill
+            </Button>
+          </EmptyState>
         ) : (
-          <div className="space-y-4">
-            {bills.map((bill) => (
-              <div
-                key={bill._id}
-                onClick={() => navigate(`/bill/${bill._id}`)}
-                className="p-4 bg-white rounded-xl shadow-md border-2 border-[#06B6D4] flex items-center justify-between flex-wrap gap-2 cursor-pointer hover:border-[#0891b2] transition"
-              >
-                <div className="flex items-center gap-2">
-                  <Receipt className="text-[#06B6D4]" size={24} />
-                  <span className="font-medium text-[#164E63]">{bill.title}</span>
-                </div>
-                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  {bill.invitationCode && (
-                    <>
-                      <code className="px-2 py-1 bg-gray-200 text-gray-800 rounded text-sm font-mono">{bill.invitationCode}</code>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {activeBills.map((bill) => (
+              <Card key={bill._id} className="hover:shadow-xl transition-shadow">
+                <CardHeader>
+                  <h3 className="text-lg font-semibold text-gray-900">{bill.title}</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {bill.members?.length || 0} members
+                  </p>
+                </CardHeader>
+                <CardBody className="space-y-3">
+                  <div>
+                    <p className="text-sm text-gray-600">Total Amount</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      ${(bill.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-2 rounded text-center">
+                    <p className="text-xs text-gray-500">Invite Code</p>
+                    <div className="flex items-center justify-between mt-1">
+                      <code className="font-mono font-semibold text-gray-900">
+                        {bill.invitationCode}
+                      </code>
                       <button
-                        type="button"
                         onClick={() => copyCode(bill.invitationCode)}
-                        className="p-2 rounded hover:bg-gray-100 text-[#06B6D4]"
-                        title="Copy code"
+                        className="p-1 hover:bg-gray-200 rounded transition-colors"
                       >
-                        {copiedCode === bill.invitationCode ? <Check size={18} /> : <Copy size={18} />}
+                        {copiedCode === bill.invitationCode ? (
+                          <Check size={16} className="text-green-600" />
+                        ) : (
+                          <Copy size={16} className="text-gray-600" />
+                        )}
                       </button>
-                    </>
-                  )}
+                    </div>
+                  </div>
+                </CardBody>
+                <div className="px-6 py-4 border-t border-gray-200 flex gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate(`/bill/${bill._id}`)}
+                    className="flex-1"
+                  >
+                    View
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate(`/edit-bill/${bill._id}`)}
+                    className="flex-1"
+                  >
+                    Edit
+                  </Button>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+
+      {/* Create Bill Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        title="Create New Bill"
+        onClose={() => {
+          setShowCreateModal(false);
+          setNewTitle('');
+          setCreateError('');
+        }}
+        size="md"
+      >
+        <form onSubmit={handleCreateBill} className="space-y-4">
+          {createError && (
+            <Alert type="error" message={createError} dismissible={false} />
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-900 mb-1">
+              Bill Name
+            </label>
+            <input
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="e.g., Weekend Trip"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+              disabled={creating}
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowCreateModal(false);
+                setNewTitle('');
+                setCreateError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" disabled={creating}>
+              {creating ? 'Creating...' : 'Create Bill'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </MainLayout>
   );
 }
