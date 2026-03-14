@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 export default function Welcome() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [invitationCode, setInvitationCode] = useState('');
   const [showRegistrationBanner, setShowRegistrationBanner] = useState(false);
@@ -20,12 +20,13 @@ export default function Welcome() {
     }
   }, [location.state?.fromRegistration, location.pathname, navigate]);
 
-  // Redirect registered users to dashboard when they visit the landing page
+  // Redirect registered users to dashboard only when they visit landing (/) and auth is resolved
   useEffect(() => {
+    if (authLoading) return;
     if (user && user.userType !== 'guest') {
       navigate('/dashboard', { replace: true });
     }
-  }, [user, navigate]);
+  }, [authLoading, user, navigate]);
 
   return (
     <div className="min-h-screen w-full bg-[#F0F9FA] text-gray-800 overflow-x-hidden">
@@ -72,7 +73,7 @@ export default function Welcome() {
                 px-3 py-2
                 rounded-md
                 transition-all duration-300 ease-in-out
-                hover:text-[#0E7490]
+                hover:text-white
                 hover:bg-[#0E7490]
                 active:scale-95
                 focus:outline-none
@@ -150,7 +151,7 @@ export default function Welcome() {
           </p>
 
           <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
-            <button onClick={() => navigate(user ? '/dashboard' : '/register')} 
+            <button onClick={() => navigate(user && user.userType !== 'guest' ? '/dashboard' : user?.userType === 'guest' ? '/guest/join' : '/register')} 
             className="
                 px-4 py-2
                 bg-gradient-to-r from-[#164E63] to-[#0E7490]
@@ -158,6 +159,8 @@ export default function Welcome() {
                 rounded-lg font-medium
                 shadow-md
                 transition-all duration-300 ease-in-out
+                hover:shadow-lg
+                hover:opacity-95
                 active:scale-95
                 focus:outline-none
                 ">
@@ -166,7 +169,7 @@ export default function Welcome() {
 
             <button
               onClick={() => navigate('/guest/join')}
-              className="relative text-sm lg:text-base text-gray-700 font-medium px-3 py-2 rounded-md transition-all duration-300 ease-in-out hover:text-[#0E7490] hover:bg-[#0E7490] active:scale-95 focus:outline-none border-none focus:ring-2 focus:ring-[#164E63]"
+              className="relative text-sm lg:text-base text-gray-700 font-medium px-3 py-2 rounded-md transition-all duration-300 ease-in-out hover:text-white hover:bg-[#0E7490] active:scale-95 focus:outline-none border-none focus:ring-2 focus:ring-[#164E63]"
             >
               Enter Invitation Code
             </button>
@@ -270,17 +273,21 @@ export default function Welcome() {
             </h4>
             <p className="text-2xl sm:text-3xl font-bold text-[#06B6D4] mb-4 sm:mb-6">Free</p>
             <div className="space-y-2 mb-4 sm:mb-6 text-sm sm:text-base text-gray-700">
-              <p>✓ 5 bills/month</p>
-              <p>✓ 3 people per bill</p>
-              <p>✓ Basic split</p>
+              <p>✓ Limited access</p>
+              <p>✓ Create a bill to split — max 5 per month</p>
+              <p>✓ Add other users to share the bill — max 3 people per bill</p>
+              <p>✓ Can add guest user</p>
             </div>
 
-            <button className="
+            <button
+              onClick={() => navigate(user && user.userType !== 'guest' ? '/dashboard' : '/register')}
+              className="
             w-full mt-6 px-6 py-3 
             bg-[#06B6D4] 
             text-[#164E63] 
             rounded-lg 
             hover:bg-[#0891b2] 
+            hover:text-white
             transition shadow-md 
             text-sm 
             sm:text-base 
@@ -300,13 +307,16 @@ export default function Welcome() {
             </h4>
             <p className="text-2xl sm:text-3xl font-bold text-[#67E8F9] mb-4 sm:mb-6">$4.99/mo</p>
             <div className="space-y-2 mb-4 sm:mb-6 text-sm sm:text-base text-white">
-              <p>✓ Unlimited bills</p>
-              <p>✓ Unlimited people</p>
-              <p>✓ Advanced splits</p>
-              <p>✓ Priority support</p>
+              <p>✓ No limit</p>
             </div>
 
-            <button className="
+            <button
+              onClick={() => {
+                if (user?.userType === 'guest') navigate('/guest/upgrade');
+                else if (user && user.userType !== 'guest') navigate('/upgrade');
+                else navigate('/register');
+              }}
+              className="
             w-full mt-6 px-6 py-3 
             bg-[#67E8F9] text-[#164E63] 
             rounded-lg hover:bg-white 

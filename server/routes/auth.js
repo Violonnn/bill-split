@@ -46,11 +46,13 @@ router.get('/check-nickname', async (req, res) => {
 
 /**
  * POST /api/auth/register
- * Register a new standard user. Sends verification email.
+ * Register a new standard user, or upgrade a guest account (when upgradeGuest: true).
+ * Sends verification email for new users. Detects guest email and returns guestAccountDetected for client to confirm.
  */
 router.post('/register', async (req, res) => {
   try {
-    const { firstName, lastName, nickname, email, username, password, confirmPassword } = req.body || {};
+    const { firstName, lastName, nickname, email, username, password, confirmPassword, upgradeGuest } = req.body || {};
+    const emailNorm = email?.trim?.()?.toLowerCase?.();
 
     // Server-side validation
     const errors = {};
@@ -73,9 +75,76 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Validation failed', errors });
     }
 
-    // Check uniqueness at DB level
-    const existingEmail = await User.findOne({ email: email.trim().toLowerCase() });
+    const existingEmail = await User.findOne({ email: emailNorm });
+
     if (existingEmail) {
+      if (existingEmail.userType === USER_TYPES.GUEST) {
+        if (upgradeGuest === true) {
+          // Upgrade guest to standard: use existing guest, set username, nickname, password
+          const existingUsername = await User.findOne({ username: username.trim(), _id: { $ne: existingEmail._id } });
+          if (existingUsername) {
+            return res.status(400).json({ error: 'Validation failed', errors: { username: 'Username is already taken' } });
+          }
+          const existingNickname = await User.findOne({ nickname: nickname.trim(), _id: { $ne: existingEmail._id } });
+          if (existingNickname) {
+            return res.status(400).json({ error: 'Validation failed', errors: { nickname: 'Nickname is already taken' } });
+          }
+          const user = await User.findById(existingEmail._id).select('+password');
+          if (!user || user.userType !== USER_TYPES.GUEST) {
+            return res.status(400).json({ error: 'Guest account no longer available. Please register as new.' });
+          }
+          user.firstName = firstName.trim();
+          user.lastName = lastName.trim();
+          user.nickname = nickname.trim();
+          user.username = username.trim();
+          user.password = password;
+          user.userType = USER_TYPES.STANDARD;
+          user.emailVerified = !isEmailConfigured();
+          user.emailVerifyToken = undefined;
+          user.emailVerifyExpires = undefined;
+          user.invitationCode = undefined;
+          user.invitedBy = undefined;
+          user.dailyAccessStart = undefined;
+          if (isEmailConfigured()) {
+            const verifyToken = crypto.randomBytes(32).toString('hex');
+            user.emailVerified = false;
+            user.emailVerifyToken = verifyToken;
+            user.emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            await user.save();
+            const verifyUrl = `${API_URL}/api/auth/verify-email?token=${verifyToken}`;
+            sendVerificationEmail(user.email, verifyUrl, user.firstName).catch((err) => {
+              console.error('[Resend] Verification email failed for', user.email, '-', err?.message || err);
+            });
+            const userObj = user.toJSON();
+            delete userObj.password;
+            delete userObj.emailVerifyToken;
+            return res.status(201).json({
+              message: 'Account upgraded. Please check your email and click the confirmation link to activate your account.',
+              email: user.email,
+              requireEmailConfirmation: true,
+            });
+          }
+          user.emailVerified = true;
+          await user.save();
+          const token = jwt.sign(
+            { userId: user._id, userType: user.userType },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+          const userObj = user.toJSON();
+          delete userObj.password;
+          delete userObj.emailVerifyToken;
+          return res.status(201).json({
+            message: 'Account upgraded successfully.',
+            user: userObj,
+            token,
+          });
+        }
+        return res.status(200).json({
+          guestAccountDetected: true,
+          message: 'This email is used as a guest account. Would you like to upgrade it to a full account? Your name and email will be kept.',
+        });
+      }
       return res.status(400).json({ error: 'Validation failed', errors: { email: 'Email is already registered' } });
     }
 
@@ -97,7 +166,7 @@ router.post('/register', async (req, res) => {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       nickname: nickname.trim(),
-      email: email.trim().toLowerCase(),
+      email: emailNorm,
       username: username.trim(),
       password,
       emailVerified: autoVerify,
@@ -211,6 +280,7 @@ router.post('/login', async (req, res) => {
     if (user.userType === USER_TYPES.GUEST) {
       return res.status(401).json({
         error: 'Guest accounts cannot log in with password. Use the invitation code or upgrade your account.',
+        code: 'GUEST_CANNOT_LOGIN',
       });
     }
 
@@ -319,12 +389,137 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// Guest access: 6 hours per day from dailyAccessStart (used for client countdown and notifications).
+const GUEST_ACCESS_MS = 6 * 60 * 60 * 1000;
+
 /**
  * GET /api/auth/me
- * Get current user (requires auth).
+ * Get current user (requires auth). For guests, includes guestAccessExpiresAt (timestamp) for live duration display.
  */
 router.get('/me', authenticate, (req, res) => {
-  res.json({ user: req.user });
+  const userObj = req.user.toObject ? req.user.toObject() : { ...req.user };
+  if (userObj.userType === USER_TYPES.GUEST && userObj.dailyAccessStart) {
+    userObj.guestAccessExpiresAt = new Date(userObj.dailyAccessStart).getTime() + GUEST_ACCESS_MS;
+  }
+  res.json({ user: userObj });
+});
+
+/**
+ * PATCH /api/auth/me
+ * Update current user profile (firstName, lastName, email, phone). No privilege escalation.
+ */
+router.patch('/me', authenticate, async (req, res) => {
+  try {
+    const { firstName, lastName, email, phone } = req.body || {};
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.userType === USER_TYPES.GUEST) {
+      const fnErr = validateName(firstName, 'First name');
+      if (fnErr) return res.status(400).json({ error: fnErr });
+      const lnErr = validateName(lastName, 'Last name');
+      if (lnErr) return res.status(400).json({ error: lnErr });
+      const emailErr = validateEmail(email);
+      if (emailErr) return res.status(400).json({ error: emailErr });
+      user.firstName = firstName.trim();
+      user.lastName = lastName.trim();
+      user.email = email.trim().toLowerCase();
+    } else {
+      if (firstName !== undefined) {
+        const fnErr = validateName(firstName, 'First name');
+        if (fnErr) return res.status(400).json({ error: fnErr });
+        user.firstName = firstName.trim();
+      }
+      if (lastName !== undefined) {
+        const lnErr = validateName(lastName, 'Last name');
+        if (lnErr) return res.status(400).json({ error: lnErr });
+        user.lastName = lastName.trim();
+      }
+      if (email !== undefined) {
+        const emailErr = validateEmail(email);
+        if (emailErr) return res.status(400).json({ error: emailErr });
+        const existing = await User.findOne({ email: email.trim().toLowerCase(), _id: { $ne: user._id } });
+        if (existing) return res.status(400).json({ error: 'Email is already in use by another account.' });
+        user.email = email.trim().toLowerCase();
+      }
+    }
+
+    if (phone !== undefined && typeof phone === 'string') {
+      user.phone = phone.trim();
+    }
+
+    await user.save();
+
+    const userObj = user.toJSON();
+    delete userObj.password;
+    delete userObj.emailVerifyToken;
+    delete userObj.resetPasswordToken;
+    res.json({ user: userObj });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ error: 'Failed to update profile.' });
+  }
+});
+
+/** Premium upgrade price (sample payment – no real gateway). */
+const PREMIUM_UPGRADE_AMOUNT_CENTS = 499;
+
+/**
+ * GET /api/auth/premium-upgrade-info
+ * Returns the sample upgrade amount for display (no auth required for price display).
+ */
+router.get('/premium-upgrade-info', (req, res) => {
+  res.json({
+    amountCents: PREMIUM_UPGRADE_AMOUNT_CENTS,
+    amountFormatted: `$${(PREMIUM_UPGRADE_AMOUNT_CENTS / 100).toFixed(2)}`,
+  });
+});
+
+/**
+ * POST /api/auth/upgrade-to-premium
+ * Standard users only. Sample payment: client confirms payment; server sets userType to premium.
+ * Body: { paymentConfirmed: true } to complete the upgrade (simulates successful payment).
+ */
+router.post('/upgrade-to-premium', authenticate, async (req, res) => {
+  try {
+    if (req.user.userType !== USER_TYPES.STANDARD) {
+      return res.status(400).json({
+        error: req.user.userType === USER_TYPES.PREMIUM
+          ? 'You are already a Premium user.'
+          : 'Only registered Standard users can upgrade to Premium.',
+      });
+    }
+
+    const { paymentConfirmed } = req.body || {};
+    if (paymentConfirmed !== true) {
+      return res.status(400).json({
+        error: 'Payment must be confirmed to complete upgrade.',
+        code: 'PAYMENT_REQUIRED',
+        amountCents: PREMIUM_UPGRADE_AMOUNT_CENTS,
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { userType: USER_TYPES.PREMIUM },
+      { new: true }
+    ).select('-password -emailVerifyToken -resetPasswordToken');
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const userObj = user.toObject ? user.toObject() : user;
+    res.json({
+      message: 'Welcome to Premium! You now have unlimited bills and participants.',
+      user: userObj,
+    });
+  } catch (err) {
+    console.error('Upgrade to premium error:', err);
+    res.status(500).json({ error: 'Upgrade failed. Please try again.' });
+  }
 });
 
 export default router;

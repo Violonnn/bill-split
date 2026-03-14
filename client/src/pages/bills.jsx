@@ -9,11 +9,12 @@ import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Alert from '../components/Alert';
 import Modal from '../components/Modal';
+import UpgradePrompt from '../components/UpgradePrompt';
 import { Trash2, Edit, Archive, Eye, Plus, AlertCircle, Copy, Check } from 'lucide-react';
 
 export default function Bills() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,7 +22,9 @@ export default function Bills() {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [createError, setCreateError] = useState('');
+  const [upgradeMessage, setUpgradeMessage] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [archiveConfirm, setArchiveConfirm] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
 
@@ -40,12 +43,13 @@ export default function Bills() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user || user.userType === 'guest') {
       navigate('/');
       return;
     }
     fetchBills();
-  }, [user, navigate, fetchBills]);
+  }, [authLoading, user, navigate, fetchBills]);
 
   const handleCreateBill = async (e) => {
     e.preventDefault();
@@ -56,6 +60,7 @@ export default function Bills() {
 
     setCreating(true);
     setCreateError('');
+    setUpgradeMessage('');
 
     try {
       const { bill } = await apiRequest('/api/bills', {
@@ -66,7 +71,10 @@ export default function Bills() {
       setNewTitle('');
       setShowCreateModal(false);
     } catch (err) {
-      setCreateError(err.message || 'Failed to create bill');
+      const msg = err.message || 'Failed to create bill';
+      setCreateError(msg);
+      const isLimitError = err?.status === 403 && (String(msg).includes('Upgrade') || String(msg).includes('Standard accounts'));
+      if (isLimitError) setUpgradeMessage(msg);
     } finally {
       setCreating(false);
     }
@@ -86,6 +94,7 @@ export default function Bills() {
   };
 
   const handleArchiveBill = async (billId) => {
+    setArchiveConfirm(null);
     try {
       await apiRequest(`/api/bills/${billId}`, {
         method: 'PATCH',
@@ -103,6 +112,7 @@ export default function Bills() {
     setTimeout(() => setCopiedCode(''), 2000);
   };
 
+  if (authLoading) return <LoadingSpinner />;
   if (!user || user.userType === 'guest') return null;
 
   const activeBills = bills.filter(b => !b.archived);
@@ -195,6 +205,15 @@ export default function Bills() {
                         <Edit size={16} />
                       </Button>
                       <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setArchiveConfirm(bill._id)}
+                        className="flex items-center gap-1"
+                        title="Archive bill"
+                      >
+                        <Archive size={16} />
+                      </Button>
+                      <Button
                         variant="danger"
                         size="sm"
                         onClick={() => setDeleteConfirm(bill._id)}
@@ -219,10 +238,14 @@ export default function Bills() {
           setShowCreateModal(false);
           setNewTitle('');
           setCreateError('');
+          setUpgradeMessage('');
         }}
         size="md"
       >
         <form onSubmit={handleCreateBill} className="space-y-4">
+          {upgradeMessage && (
+            <UpgradePrompt message={upgradeMessage} className="mb-4" />
+          )}
           {createError && (
             <Alert type="error" message={createError} dismissible={false} />
           )}
@@ -278,6 +301,31 @@ export default function Bills() {
               disabled={deleting}
             >
               {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Archive Confirmation Modal */}
+      <Modal
+        isOpen={!!archiveConfirm}
+        title="Archive Bill"
+        onClose={() => setArchiveConfirm(null)}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-600">
+            Archive this bill? You can restore it anytime from Archived Bills.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setArchiveConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => handleArchiveBill(archiveConfirm)}
+            >
+              Archive
             </Button>
           </div>
         </div>

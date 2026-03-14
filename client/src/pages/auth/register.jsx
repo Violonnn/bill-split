@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { apiRequest } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import Modal from '../../components/Modal.jsx';
+import { Button } from '../../components/Button.jsx';
 
 // Reusable check: spaces-only or containing spaces is invalid
 const hasInvalidSpaces = (value) => {
@@ -33,6 +35,8 @@ export default function Register() {
   const [submitError, setSubmitError] = useState('');
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [checkingNickname, setCheckingNickname] = useState(false);
+  const [showGuestUpgradeModal, setShowGuestUpgradeModal] = useState(false);
+  const [guestUpgradeMessage, setGuestUpgradeMessage] = useState('');
 
   // Validation rules - spaces are not valid input per requirements
   const validateField = (name, value) => {
@@ -248,8 +252,16 @@ export default function Register() {
           username: formData.username.trim(),
           password: formData.password,
           confirmPassword: formData.confirmPassword,
+          upgradeGuest: false,
         }),
       });
+
+      if (data.guestAccountDetected && data.message) {
+        setGuestUpgradeMessage(data.message);
+        setShowGuestUpgradeModal(true);
+        setSubmitting(false);
+        return;
+      }
 
       if (data.requireEmailConfirmation) {
         navigate('/login', { state: { checkEmail: true, email: data.email } });
@@ -259,7 +271,44 @@ export default function Register() {
       login(data.user, data.token);
       navigate('/dashboard', { state: { fromRegistration: true } });
     } catch (err) {
-      setSubmitError(err.data?.errors ? Object.values(err.data.errors).join('. ') : err.message || 'Registration failed.');
+      if (err.isNetworkError) {
+        setSubmitError(err.message);
+        if (err.data?.errors) setErrors(err.data.errors);
+      } else {
+        setSubmitError(err.data?.errors ? Object.values(err.data.errors).join('. ') : err.message || 'Registration failed.');
+        if (err.data?.errors) setErrors(err.data.errors);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGuestUpgradeConfirm = async () => {
+    setSubmitError('');
+    setSubmitting(true);
+    setShowGuestUpgradeModal(false);
+    try {
+      const data = await apiRequest('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          nickname: formData.nickname.trim(),
+          email: formData.email.trim(),
+          username: formData.username.trim(),
+          password: formData.password,
+          confirmPassword: formData.confirmPassword,
+          upgradeGuest: true,
+        }),
+      });
+      if (data.requireEmailConfirmation) {
+        navigate('/login', { state: { checkEmail: true, email: data.email } });
+        return;
+      }
+      login(data.user, data.token);
+      navigate('/dashboard', { state: { fromRegistration: true } });
+    } catch (err) {
+      setSubmitError(err.data?.errors ? Object.values(err.data.errors).join('. ') : err.message || 'Upgrade failed.');
       if (err.data?.errors) setErrors(err.data.errors);
     } finally {
       setSubmitting(false);
@@ -326,19 +375,6 @@ export default function Register() {
     if (passwordStrength === 3) return 'Good';
     return 'Strong';
   };
-
-  // Form is valid when no errors and all required fields have non-empty, non-space-only values
-  const isFormValid =
-    Object.keys(errors).length === 0 &&
-    formData.lastName.trim() &&
-    formData.firstName.trim() &&
-    formData.nickname.trim() &&
-    formData.email.trim() &&
-    formData.username.trim() &&
-    formData.password &&
-    formData.confirmPassword &&
-    !checkingUsername &&
-    !checkingNickname;
 
   return (
    <div className="h-screen w-screen flex">
@@ -644,7 +680,7 @@ export default function Register() {
             <div className="flex justify-center mt-8">
               <button
                 type="submit"
-                disabled={!isFormValid || submitting}
+                disabled={submitting}
                 className={`  px-4 py-2
                   bg-gradient-to-r from-[#164E63] to-[#0E7490]
                   text-white text-sm lg:text-base
@@ -656,9 +692,9 @@ export default function Register() {
                   focus:ring-2 focus:ring-[#06B6D4] focus:ring-offset-2
                   hover:shadow-lg transform hover:scale-105
                    ${
-                  isFormValid
-                    ? 'bg-[#0E7490] hover:bg-[#06B6D4] shadow-lg hover:shadow-2xl cursor-pointer transform hover:scale-105 active:scale-95'
-                    : 'bg-gray-400 cursor-not-allowed opacity-100'
+                  submitting
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-[#0E7490] hover:bg-[#06B6D4] shadow-lg hover:shadow-2xl cursor-pointer transform hover:scale-105 active:scale-95'
                 }`}
               >
                 {submitting ? 'Creating Account...' : 'Sign Up'}
@@ -679,6 +715,26 @@ export default function Register() {
               </span>
             </div>
           </form>
+
+          {/* Guest account detected: confirm upgrade to full account */}
+          <Modal
+            isOpen={showGuestUpgradeModal}
+            title="Guest account found"
+            onClose={() => setShowGuestUpgradeModal(false)}
+            size="md"
+          >
+            <div className="space-y-4">
+              <p className="text-gray-700">{guestUpgradeMessage}</p>
+              <div className="flex gap-2 justify-end pt-2">
+                <Button variant="secondary" onClick={() => setShowGuestUpgradeModal(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleGuestUpgradeConfirm} disabled={submitting}>
+                  {submitting ? 'Upgrading...' : 'Yes, upgrade'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
         </div>
       </div>
     </div>

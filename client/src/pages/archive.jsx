@@ -13,7 +13,7 @@ import { RotateCcw, Trash2, AlertCircle } from 'lucide-react';
 
 export default function Archive() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [archivedBills, setArchivedBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,8 +23,8 @@ export default function Archive() {
   const fetchArchivedBills = useCallback(async () => {
     try {
       setLoading(true);
-      const { bills } = await apiRequest('/api/bills');
-      setArchivedBills(bills?.filter(b => b.archived) || []);
+      const { bills } = await apiRequest('/api/bills?archived=true');
+      setArchivedBills(bills || []);
       setError('');
     } catch (err) {
       setError(err.message || 'Failed to load archived bills');
@@ -35,12 +35,13 @@ export default function Archive() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user || user.userType === 'guest') {
       navigate('/');
       return;
     }
     fetchArchivedBills();
-  }, [user, navigate, fetchArchivedBills]);
+  }, [authLoading, user, navigate, fetchArchivedBills]);
 
   const handleRestoreBill = async (billId) => {
     setRestoring(billId);
@@ -67,6 +68,7 @@ export default function Archive() {
     }
   };
 
+  if (authLoading) return <LoadingSpinner />;
   if (!user || user.userType === 'guest') return null;
 
   return (

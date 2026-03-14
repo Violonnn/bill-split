@@ -19,6 +19,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     if (searchParams.get('verified') === '1') {
@@ -90,6 +91,7 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Run validation so empty/invalid fields show visual feedback (red border + message)
     const freshErrors = {};
     if (!formData.username?.trim()) freshErrors.username = 'Username or email is required';
     if (!formData.password) freshErrors.password = 'Password is required';
@@ -99,6 +101,7 @@ export default function Login() {
 
     if (Object.keys(freshErrors).length > 0) return;
 
+    setSubmitError('');
     setSubmitting(true);
     setSuccessMessage('');
 
@@ -114,16 +117,25 @@ export default function Login() {
       login(userData, token);
       navigate('/dashboard');
     } catch (err) {
-      const msg = err.data?.code === 'EMAIL_NOT_VERIFIED'
-        ? err.data.error
-        : (err.message || 'Incorrect username or password');
-      setErrors({ username: msg });
+      if (err.isNetworkError) {
+        setSubmitError(err.message);
+        setErrors({});
+      } else if (err.data?.code === 'GUEST_CANNOT_LOGIN') {
+        setSubmitError('');
+        setErrors({});
+        navigate('/guest/join', { replace: true, state: { fromLogin: true, message: err.data?.error || 'Guest accounts cannot log in with password. Enter your invitation code below to access a bill, then use "Upgrade Account" to set a password and log in next time.' } });
+        return;
+      } else {
+        setSubmitError('');
+        const msg = err.data?.code === 'EMAIL_NOT_VERIFIED'
+          ? err.data.error
+          : (err.message || 'Incorrect username or password');
+        setErrors({ username: msg });
+      }
     } finally {
       setSubmitting(false);
     }
   };
-
-  const isFormValid = !!formData.username?.trim() && !!formData.password;
 
   return (
     <div className="h-screen w-screen flex">
@@ -225,6 +237,12 @@ export default function Login() {
               )}
             </div>
 
+            {submitError && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm flex items-center gap-2">
+                <AlertCircle size={16} /> {submitError}
+              </div>
+            )}
+
             {successMessage && (
               <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
                 <span className="flex-shrink-0">✓</span>
@@ -247,7 +265,7 @@ export default function Login() {
             <div className="flex justify-center mt-8">
               <button
                 type="submit"
-                disabled={!isFormValid || submitting}
+                disabled={submitting}
                 className={`  px-4 py-2
                   bg-gradient-to-r from-[#164E63] to-[#0E7490]
                   text-white text-sm lg:text-base
@@ -258,9 +276,9 @@ export default function Login() {
                   focus:outline-none
                   hover:shadow-lg transform hover:scale-105
                    ${
-                  isFormValid
-                    ? 'bg-[#0E7490] hover:bg-[#06B6D4] shadow-lg hover:shadow-2xl cursor-pointer transform hover:scale-105 active:scale-95'
-                    : 'bg-gray-400 cursor-not-allowed opacity-100'
+                  submitting
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-[#0E7490] hover:bg-[#06B6D4] shadow-lg hover:shadow-2xl cursor-pointer transform hover:scale-105 active:scale-95'
                 }`}
               >
                 {submitting ? 'Signing In...' : 'Sign In'}

@@ -91,6 +91,8 @@ export async function sendPasswordResetEmail(to, resetUrl, firstName) {
     return null;
   }
 
+  const effectiveTo = getEffectiveTo(to);
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #164E63;">Reset Your Password</h2>
@@ -106,11 +108,61 @@ export async function sendPasswordResetEmail(to, resetUrl, firstName) {
 
   const { data, error } = await resend.emails.send({
     from: getFrom(),
-    to: [to],
+    to: [effectiveTo],
     subject: 'BillSplit - Reset Your Password',
     html,
   });
 
   if (error) throw new Error(error.message);
+  return data;
+}
+
+/**
+ * Sends guest invitation email with link to join the bill (invitation code in URL).
+ */
+export async function sendGuestInviteEmail(to, joinUrl, billTitle, inviterName) {
+  const resend = getResend();
+  if (!resend) {
+    console.log('[Dev] RESEND_API_KEY not set. Guest join link:', joinUrl);
+    return null;
+  }
+
+  const effectiveTo = getEffectiveTo(to);
+  const displayBill = billTitle || 'a bill';
+  const displayInviter = inviterName || 'Someone';
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #164E63; margin-bottom: 16px;">You're Invited to Split a Bill</h2>
+      <p style="font-size: 16px; line-height: 1.6; color: #334155;">
+        ${displayInviter} has invited you to view and contribute to <strong>${displayBill}</strong> on BillSplit.
+      </p>
+      <p style="font-size: 16px; line-height: 1.6; color: #334155;">
+        You can join as a guest (no account required). Click the button below to enter your name and email and access the bill. Guest access is 6 hours per day; you can re-enter the invitation code to extend.
+      </p>
+      <p style="margin: 24px 0;">
+        <a href="${joinUrl}" style="background: #06B6D4; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">Join as Guest</a>
+      </p>
+      <p style="font-size: 14px; color: #64748b;">
+        Or copy this link: <a href="${joinUrl}" style="color: #06B6D4;">${joinUrl}</a>
+      </p>
+      <p style="margin-top: 24px; font-size: 14px; color: #64748b;">
+        Best regards,<br />The BillSplit Team
+      </p>
+    </div>
+  `;
+
+  const { data, error } = await resend.emails.send({
+    from: getFrom(),
+    to: [effectiveTo],
+    subject: `BillSplit – You're invited to "${displayBill}"`,
+    html,
+  });
+
+  if (error) {
+    console.error('[Resend] Guest invite send failed:', to, error?.message || error);
+    throw new Error(error?.message || 'Failed to send invite email');
+  }
+  console.log('[Resend] Guest invite sent to', to);
   return data;
 }

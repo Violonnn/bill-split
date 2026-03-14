@@ -13,6 +13,7 @@ import BillView from './pages/bill-view';
 import EditBill from './pages/edit-bill';
 import Profile from './pages/profile';
 import Archive from './pages/archive';
+import Upgrade from './pages/upgrade';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="/edit-bill/:id" element={<EditBill />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/archive" element={<Archive />} />
+          <Route path="/upgrade" element={<Upgrade />} />
           <Route path="/register" element={<Register />} />
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

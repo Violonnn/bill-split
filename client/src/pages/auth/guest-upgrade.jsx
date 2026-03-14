@@ -1,18 +1,35 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import LoadingSpinner from '../../components/LoadingSpinner.jsx';
 
 export default function GuestUpgrade() {
   const navigate = useNavigate();
-  const { user, login } = useAuth();
+  const location = useLocation();
+  const { user, login, loading: authLoading } = useAuth();
   const [formData, setFormData] = useState({ password: '', confirmPassword: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [upgradePromptMessage, setUpgradePromptMessage] = useState('');
 
+  useEffect(() => {
+    if (location.state?.fromLogin && location.state?.message) {
+      setUpgradePromptMessage(location.state.message);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state?.fromLogin, location.state?.message, location.pathname, navigate]);
+
+  if (authLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#F0F9FA]">
+        <LoadingSpinner />
+      </div>
+    );
+  }
   if (!user || user.userType !== 'guest') {
     navigate('/');
     return null;
@@ -89,6 +106,11 @@ export default function GuestUpgrade() {
         </button>
         <div className="w-full max-w-md">
           <h1 className="text-3xl sm:text-4xl font-bold text-[#164E63] mb-2">Complete Your Upgrade</h1>
+          {upgradePromptMessage && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              {upgradePromptMessage}
+            </div>
+          )}
           <p className="text-gray-600 text-sm mb-6">
             Add a password to keep your account. We&apos;ll use your existing details: {user.firstName} {user.lastName} ({user.email})
           </p>

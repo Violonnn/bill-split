@@ -1,21 +1,31 @@
-import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { apiRequest } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 export default function GuestJoin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const codeFromUrl = searchParams.get('code') || '';
 
   const { login } = useAuth();
-  const [step, setStep] = useState(codeFromUrl ? 'form' : 'code');
+  const [step, setStep] = useState(codeFromUrl ? 'email' : 'code');
   const [code, setCode] = useState(codeFromUrl);
+  const [emailOnly, setEmailOnly] = useState('');
   const [formData, setFormData] = useState({ firstName: '', lastName: '', email: '' });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [codeValid, setCodeValid] = useState(false);
+  const [upgradePromptMessage, setUpgradePromptMessage] = useState('');
+
+  useEffect(() => {
+    if (location.state?.fromLogin && location.state?.message) {
+      setUpgradePromptMessage(location.state.message);
+      navigate(location.pathname + location.search, { replace: true, state: {} });
+    }
+  }, [location.state?.fromLogin, location.state?.message, location.pathname, location.search, navigate]);
 
   const validateName = (v, name) => {
     if (!v?.trim()) return `${name} is required`;
@@ -47,7 +57,7 @@ export default function GuestJoin() {
       });
       if (res.billId) {
         setCodeValid(true);
-        setStep('form');
+        setStep('email');
       }
     } catch (err) {
       setErrors({ code: err.message || 'Invalid invitation code' });
@@ -56,6 +66,37 @@ export default function GuestJoin() {
     }
   };
 
+  // Returning guest: email only → rejoin. If not found, show full form.
+  const handleRejoinWithEmail = async (e) => {
+    e.preventDefault();
+    const emailErr = validateEmail(emailOnly);
+    if (emailErr) {
+      setErrors({ emailOnly: emailErr });
+      return;
+    }
+    setErrors({});
+    setSubmitting(true);
+    try {
+      const res = await apiRequest('/api/guest/rejoin', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: code.trim().toUpperCase(),
+          email: emailOnly.trim().toLowerCase(),
+        }),
+      });
+      const { user: userData, token, billId, message } = res;
+      login(userData, token);
+      navigate(billId ? `/bill/${billId}` : '/', { state: { guestWelcomeBack: message } });
+    } catch (err) {
+      setErrors({ emailOnly: err.message || 'No guest found for this email.' });
+      setFormData((prev) => ({ ...prev, email: emailOnly.trim().toLowerCase() }));
+      setStep('form');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Submit guest details (firstName, lastName, email). Server reuses existing guest by email if invited before.
   const handleSubmitGuestForm = async (e) => {
     e.preventDefault();
 
@@ -73,7 +114,7 @@ export default function GuestJoin() {
     setSubmitting(true);
 
     try {
-      const { user: userData, token, billId } = await apiRequest('/api/guest/join', {
+      const res = await apiRequest('/api/guest/join', {
         method: 'POST',
         body: JSON.stringify({
           code: code.trim().toUpperCase(),
@@ -83,8 +124,13 @@ export default function GuestJoin() {
         }),
       });
 
+      const { user: userData, token, billId, existingGuest, alreadyInBill, message } = res;
       login(userData, token);
-      navigate(billId ? `/bill/${billId}` : '/');
+      if (existingGuest && alreadyInBill && message) {
+        navigate(billId ? `/bill/${billId}` : '/', { state: { guestWelcomeBack: message } });
+      } else {
+        navigate(billId ? `/bill/${billId}` : '/');
+      }
     } catch (err) {
       setErrors({ email: err.message || 'Failed to join' });
     } finally {
@@ -121,8 +167,14 @@ export default function GuestJoin() {
           </button>
 
             <h1 className="text-2xl font-bold text-[#164E63] mb-8">
-              {step === 'code' ? 'Enter Invitation Code' : 'Your Information'}
+              {step === 'code' ? 'Enter Invitation Code' : step === 'email' ? 'Welcome back' : 'Your Information'}
             </h1>
+
+            {upgradePromptMessage && (
+              <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                {upgradePromptMessage}
+              </div>
+            )}
 
             {step === 'code' ? (
               <form onSubmit={handleCheckCode} className="space-y-4">
@@ -146,46 +198,121 @@ export default function GuestJoin() {
                   {submitting ? 'Checking...' : 'Continue'}
                 </button>
               </form>
-            ) : (
-              <form onSubmit={handleSubmitGuestForm} className="space-y-4">
-                {Object.values(errors).some(Boolean) && (
-                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
-                    {Object.values(errors).filter(Boolean).join('. ')}
+            ) : step === 'email' ? (
+              <form onSubmit={handleRejoinWithEmail} className="space-y-4">
+                <p className="text-gray-600 text-sm mb-4">
+                  Already joined this bill? Enter your email to sign back in.
+                </p>
+                {errors.emailOnly && (
+                  <div className="flex items-center gap-1 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
+                    <AlertCircle size={16} /> {errors.emailOnly}
                   </div>
                 )}
-                <div>
-                  <input
-                    type="text"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData((p) => ({ ...p, firstName: e.target.value }))}
-                    placeholder="First Name"
-                    className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData((p) => ({ ...p, lastName: e.target.value }))}
-                    placeholder="Last Name"
-                    className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
-                    placeholder="Email"
-                    className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
-                  />
-                </div>
+                <input
+                  type="email"
+                  value={emailOnly}
+                  onChange={(e) => {
+                    setEmailOnly(e.target.value);
+                    setErrors((prev) => ({ ...prev, emailOnly: '' }));
+                  }}
+                  placeholder="Your email"
+                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
+                  autoComplete="email"
+                />
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full px-4 py-2.5 bg-gradient-to-r from-[#164E63] to-[#0E7490] text-white rounded-lg font-medium disabled:opacity-70"
+                >
+                  {submitting ? 'Signing in...' : 'Continue'}
+                </button>
                 <button
                   type="button"
                   onClick={() => setStep('code')}
                   className="text-[#06B6D4] hover:text-[#0891b2] text-sm font-semibold"
                 >
                   ← Change code
+                </button>
+                <p className="text-gray-500 text-sm pt-2 border-t border-gray-200 mt-4">
+                  New to this bill?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrors({});
+                      setFormData((prev) => ({ ...prev, email: emailOnly.trim().toLowerCase() }));
+                      setStep('form');
+                    }}
+                    className="text-[#06B6D4] hover:text-[#0891b2] font-semibold"
+                  >
+                    Enter your details to join
+                  </button>
+                </p>
+              </form>
+            ) : (
+              <form onSubmit={handleSubmitGuestForm} className="space-y-4">
+                <div>
+                  <input
+                    type="text"
+                    value={formData.firstName}
+                    onChange={(e) => {
+                      setFormData((p) => ({ ...p, firstName: e.target.value }));
+                      if (errors.firstName) setErrors((prev) => ({ ...prev, firstName: '' }));
+                    }}
+                    placeholder="First Name"
+                    className={`w-full px-4 py-2.5 rounded-lg border-2 focus:outline-none focus:ring-2 text-sm ${
+                      errors.firstName ? 'border-red-500 focus:ring-red-300' : 'border-gray-300 focus:ring-[#06B6D4]'
+                    }`}
+                  />
+                  {errors.firstName && (
+                    <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                      <AlertCircle size={12} /> {errors.firstName}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <input
+                    type="text"
+                    value={formData.lastName}
+                    onChange={(e) => {
+                      setFormData((p) => ({ ...p, lastName: e.target.value }));
+                      if (errors.lastName) setErrors((prev) => ({ ...prev, lastName: '' }));
+                    }}
+                    placeholder="Last Name"
+                    className={`w-full px-4 py-2.5 rounded-lg border-2 focus:outline-none focus:ring-2 text-sm ${
+                      errors.lastName ? 'border-red-500 focus:ring-red-300' : 'border-gray-300 focus:ring-[#06B6D4]'
+                    }`}
+                  />
+                  {errors.lastName && (
+                    <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                      <AlertCircle size={12} /> {errors.lastName}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => {
+                      setFormData((p) => ({ ...p, email: e.target.value }));
+                      if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+                    }}
+                    placeholder="Email"
+                    className={`w-full px-4 py-2.5 rounded-lg border-2 focus:outline-none focus:ring-2 text-sm ${
+                      errors.email ? 'border-red-500 focus:ring-red-300' : 'border-gray-300 focus:ring-[#06B6D4]'
+                    }`}
+                  />
+                  {errors.email && (
+                    <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                      <AlertCircle size={12} /> {errors.email}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep('email')}
+                  className="text-[#06B6D4] hover:text-[#0891b2] text-sm font-semibold"
+                >
+                  ← Back
                 </button>
                 <button
                   type="submit"

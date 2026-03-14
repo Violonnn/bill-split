@@ -9,11 +9,12 @@ import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Alert from '../components/Alert';
 import Modal from '../components/Modal';
+import UpgradePrompt from '../components/UpgradePrompt';
 import { Plus, TrendingUp, Archive, AlertCircle, Copy, Check } from 'lucide-react';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [createError, setCreateError] = useState('');
+  const [upgradeMessage, setUpgradeMessage] = useState('');
   const [copiedCode, setCopiedCode] = useState('');
 
   const fetchBills = useCallback(async () => {
@@ -38,12 +40,13 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user || user.userType === 'guest') {
       navigate('/');
       return;
     }
     fetchBills();
-  }, [user, navigate, fetchBills]);
+  }, [authLoading, user, navigate, fetchBills]);
 
   const handleCreateBill = async (e) => {
     e.preventDefault();
@@ -76,6 +79,7 @@ export default function Dashboard() {
     setTimeout(() => setCopiedCode(''), 2000);
   };
 
+  if (authLoading) return <LoadingSpinner />;
   if (!user || user.userType === 'guest') return null;
 
   const activeBills = bills.filter(b => !b.archived);
@@ -231,10 +235,14 @@ export default function Dashboard() {
           setShowCreateModal(false);
           setNewTitle('');
           setCreateError('');
+          setUpgradeMessage('');
         }}
         size="md"
       >
         <form onSubmit={handleCreateBill} className="space-y-4">
+          {upgradeMessage && (
+            <UpgradePrompt message={upgradeMessage} className="mb-4" />
+          )}
           {createError && (
             <Alert type="error" message={createError} dismissible={false} />
           )}

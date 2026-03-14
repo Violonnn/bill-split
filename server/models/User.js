@@ -40,6 +40,7 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
       lowercase: true,
+      unique: true,
     },
     username: {
       type: String,
@@ -76,14 +77,19 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    phone: {
+      type: String,
+      trim: true,
+      default: '',
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Indexes for lookups (nickname unique+sparse is on the field above)
-userSchema.index({ email: 1 });
+// Indexes: email is unique so no duplicate guests or users per email
+userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ invitationCode: 1 }, { sparse: true });
 
 // Hash password before saving (only for registered users and when password is modified)
