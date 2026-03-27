@@ -87,7 +87,6 @@ export default function Login() {
     }));
     validateField(name, value);
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -127,10 +126,15 @@ export default function Login() {
         return;
       } else {
         setSubmitError('');
-        const msg = err.data?.code === 'EMAIL_NOT_VERIFIED'
-          ? err.data.error
-          : (err.message || 'Incorrect username or password');
-        setErrors({ username: msg });
+        if (err.data?.code === 'EMAIL_NOT_VERIFIED') {
+          setErrors({ username: err.data.error });
+        } else if (err.data?.code === 'USERNAME_NOT_FOUND') {
+          setErrors({ username: err.data.error });
+        } else if (err.data?.code === 'PASSWORD_INCORRECT') {
+          setErrors({ password: err.data.error });
+        } else {
+          setErrors({ username: err.message || 'Username or Email not found or password incorrect' });
+        }
       }
     } finally {
       setSubmitting(false);
@@ -231,7 +235,7 @@ export default function Login() {
                 </button>
               </div>
               {touched.password && errors.password && (
-                <div className="flex items-center mt-1 text-red-500 text-xs">
+                <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.password}
                 </div>
               )}

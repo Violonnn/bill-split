@@ -43,7 +43,7 @@ export default function GuestJoin() {
   const handleCheckCode = async (e) => {
     e.preventDefault();
     if (!code?.trim()) {
-      setErrors({ code: 'Invitation code is required' });
+      setErrors({ code: 'Invitation code required' });
       return;
     }
 
@@ -178,18 +178,26 @@ export default function GuestJoin() {
 
             {step === 'code' ? (
               <form onSubmit={handleCheckCode} className="space-y-4">
-                {errors.code && (
-                  <div className="flex items-center gap-1 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
-                    <AlertCircle size={16} /> {errors.code}
-                  </div>
-                )}
-                <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="INVITATION CODE"
-                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm uppercase"
-                />
+                <div>
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value.toUpperCase());
+                      setErrors((prev) => ({ ...prev, code: '' }));
+                    }}
+                    onFocus={() => setErrors((prev) => ({ ...prev, code: '' }))}
+                    placeholder="INVITATION CODE"
+                    className={`w-full px-4 py-2.5 rounded-lg border-2 focus:outline-none focus:ring-2 text-sm uppercase ${
+                      errors.code ? 'border-red-500 focus:ring-red-300' : code.trim() ? 'border-green-500 focus:ring-green-300' : 'border-gray-300 focus:ring-[#06B6D4]'
+                    }`}
+                  />
+                  {errors.code && (
+                    <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                      <AlertCircle size={12} /> {errors.code}
+                    </div>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={submitting}
