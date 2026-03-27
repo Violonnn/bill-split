@@ -48,7 +48,7 @@ export default function Sidebar() {
         } z-40 md:z-10`}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 p-6 border-b border-cyan-400">
+        <div className="flex items-center gap-3 p-6  border-cyan-400">
           <Receipt size={32} className="text-cyan-100" />
           <h1 className="text-2xl font-bold text-white">BillSplit</h1>
         </div>
@@ -56,21 +56,27 @@ export default function Sidebar() {
 
         {/* Navigation Menu - same bright white as Logout for inactive items */}
         <nav className="flex-1 p-4 space-y-2">
-          {menuItems.map(({ path, icon: Icon, label }) => (
-            <Link
-              key={path}
-              to={path}
-              onClick={() => setIsOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-colors ${
-                isActive(path)
-                  ? 'bg-white text-[#0891b2] shadow-lg [&_svg]:text-[#0891b2]'
-                  : '!text-white hover:bg-cyan-400/30 [&_svg]:!text-white'
-              }`}
-            >
-              <Icon size={22} className="flex-shrink-0" />
-              <span>{label}</span>
-            </Link>
-          ))}
+          {/* Features Section */}
+          <div className="mb-4">
+            <p className="text-xs font-bold text-cyan-100 uppercase tracking-widest px-4 mb-3">Features</p>
+            <div className="space-y-2">
+              {menuItems.map(({ path, icon: Icon, label }) => (
+                <Link
+                  key={path}
+                  to={path}
+                  onClick={() => setIsOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-colors ${
+                    isActive(path)
+                      ? 'bg-white text-[#0891b2] shadow-lg [&_svg]:text-[#0891b2]'
+                      : '!text-white hover:bg-cyan-400/30 [&_svg]:!text-white'
+                  }`}
+                >
+                  <Icon size={22} className="flex-shrink-0" />
+                  <span>{label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
         </nav>
 
       </aside>
