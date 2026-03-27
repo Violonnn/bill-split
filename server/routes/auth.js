@@ -113,7 +113,7 @@ router.post('/register', async (req, res) => {
             await user.save();
             const verifyUrl = `${API_URL}/api/auth/verify-email?token=${verifyToken}`;
             sendVerificationEmail(user.email, verifyUrl, user.firstName).catch((err) => {
-              console.error('[Resend] Verification email failed for', user.email, '-', err?.message || err);
+              console.error('[Mail] Verification email failed for', user.email, '-', err?.message || err);
             });
             const userObj = user.toJSON();
             delete userObj.password;
@@ -175,11 +175,18 @@ router.post('/register', async (req, res) => {
     });
     await user.save();
 
-    // Send confirmation email via Resend (non-blocking; registration succeeds even if email fails)
+    // Send confirmation email via SMTP (await so we can log success/failure; registration still returns 201)
     const verifyUrl = `${API_URL}/api/auth/verify-email?token=${verifyToken}`;
-    sendVerificationEmail(user.email, verifyUrl, user.firstName).catch((err) => {
-      console.error('[Resend] Verification email failed for', user.email, '-', err?.message || err);
-    });
+    if (isEmailConfigured()) {
+      console.log('[Auth] Sending verification email to', user.email);
+      try {
+        await sendVerificationEmail(user.email, verifyUrl, user.firstName);
+        console.log('[Auth] Verification email sent successfully.');
+      } catch (err) {
+        console.error('[Mail] Verification email FAILED for', user.email, '–', err?.message || err);
+        console.error('[Mail] Full error:', err);
+      }
+    }
 
     // When email is configured: user must confirm before logging in. No token returned.
     if (isEmailConfigured()) {
@@ -222,6 +229,77 @@ router.post('/register', async (req, res) => {
 
     const message = process.env.NODE_ENV === 'production' ? 'Registration failed. Please try again.' : (err.message || 'Registration failed. Please try again.');
     res.status(500).json({ error: message });
+  }
+});
+
+const RESEND_CONFIRMATION_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
+
+/**
+ * POST /api/auth/resend-confirmation
+ * Resend the email confirmation link. Body: { emailOrUsername: string }.
+ * Only for registered (standard/premium) users who are not yet verified.
+ * Rate limited per user (2 min cooldown).
+ */
+router.post('/resend-confirmation', async (req, res) => {
+  try {
+    const { emailOrUsername } = req.body || {};
+    const raw = typeof emailOrUsername === 'string' ? emailOrUsername.trim() : '';
+    if (!raw) {
+      return res.status(400).json({ error: 'Email or username is required.' });
+    }
+    const isEmail = raw.includes('@');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (isEmail && !emailRegex.test(raw)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
+    const user = await User.findOne(
+      isEmail ? { email: raw.toLowerCase() } : { username: raw }
+    );
+    if (!user) {
+      return res.json({ message: 'If an unverified account exists with this email or username, a new confirmation link has been sent.' });
+    }
+    if (user.userType === USER_TYPES.GUEST) {
+      return res.json({ message: 'If an unverified account exists with this email or username, a new confirmation link has been sent.' });
+    }
+    if (user.emailVerified) {
+      return res.json({ message: 'This account is already verified. You can log in.' });
+    }
+
+    const now = new Date();
+    const sentAt = user.resendConfirmationSentAt ? new Date(user.resendConfirmationSentAt).getTime() : 0;
+    if (now.getTime() - sentAt < RESEND_CONFIRMATION_COOLDOWN_MS) {
+      const waitMins = Math.ceil((RESEND_CONFIRMATION_COOLDOWN_MS - (now.getTime() - sentAt)) / 60000);
+      return res.status(429).json({
+        error: `Please wait ${waitMins} minute(s) before requesting another confirmation email.`,
+        code: 'RESEND_COOLDOWN',
+      });
+    }
+
+    if (!isEmailConfigured()) {
+      return res.status(503).json({
+        error: 'Email service is not configured. Please try again later or contact support.',
+      });
+    }
+
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    user.emailVerifyToken = verifyToken;
+    user.emailVerifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    user.resendConfirmationSentAt = now;
+    await user.save();
+
+    const verifyUrl = `${API_URL}/api/auth/verify-email?token=${verifyToken}`;
+    console.log('[Auth] Resending verification email to', user.email);
+    sendVerificationEmail(user.email, verifyUrl, user.firstName).catch((err) => {
+      console.error('[Mail] Resend confirmation failed for', user.email, '-', err?.message || err);
+    });
+
+    return res.json({
+      message: 'A new confirmation email has been sent. Check your inbox and click the link to verify your account, then log in.',
+    });
+  } catch (err) {
+    console.error('Resend confirmation error:', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 

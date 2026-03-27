@@ -64,6 +64,7 @@ const userSchema = new mongoose.Schema(
     },
     emailVerifyToken: { type: String },
     emailVerifyExpires: { type: Date },
+    resendConfirmationSentAt: { type: Date },
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
     invitedBy: {
@@ -88,8 +89,7 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Indexes: email is unique so no duplicate guests or users per email
-userSchema.index({ email: 1 }, { unique: true });
+// Indexes: invitationCode is queried often during guest join flows.
 userSchema.index({ invitationCode: 1 }, { sparse: true });
 
 // Hash password before saving (only for registered users and when password is modified)

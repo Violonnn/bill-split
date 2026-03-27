@@ -1,83 +1,108 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-export const isEmailConfigured = () => !!process.env.RESEND_API_KEY;
+// Email is considered ready only when all SMTP settings are present.
+export const isEmailConfigured = () => {
+  const required = [
+    process.env.SMTP_HOST,
+    process.env.SMTP_PORT,
+    process.env.SMTP_USER,
+    process.env.SMTP_PASS,
+    process.env.SMTP_FROM,
+  ];
+  return required.every((value) => typeof value === 'string' && value.trim().length > 0);
+};
 
-const getResend = () =>
-  process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+// Parse and validate the SMTP port once so invalid env values fail fast.
+const getSmtpPort = () => {
+  const port = Number.parseInt(process.env.SMTP_PORT || '', 10);
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error('SMTP_PORT must be a valid positive integer');
+  }
+  return port;
+};
 
-const getFrom = () =>
-  process.env.RESEND_FROM || 'BillSplit <onboarding@resend.dev>';
+// Create a reusable transporter so all email services share one implementation.
+const getTransporter = () => nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: getSmtpPort(),
+  secure: process.env.SMTP_SECURE === 'true',
+  // Some school/corporate networks inject TLS certificates. Keep strict by default.
+  tls: {
+    rejectUnauthorized: process.env.SMTP_ALLOW_SELF_SIGNED !== 'true',
+  },
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
-/**
- * Resend test/onboarding domain can only send to delivered@resend.dev unless you verify your own domain.
- * Set RESEND_DEV_RECIPIENT=delivered@resend.dev to force all outgoing mail to that address (for testing).
- */
+// Allow a development-only recipient override for safe testing.
 const getEffectiveTo = (userEmail) => {
-  const override = process.env.RESEND_DEV_RECIPIENT?.trim();
+  const override = process.env.SMTP_DEV_RECIPIENT?.trim();
   if (override) {
-    console.log('[Resend] Using dev recipient override:', override, '(original:', userEmail, ')');
+    console.log('[Mail] Using dev recipient override:', override, '(original:', userEmail, ')');
     return override;
   }
   return userEmail;
 };
 
+// Generic send utility reused by verification, reset, and invite flows.
+async function sendEmail({ to, subject, html }) {
+  if (!isEmailConfigured()) {
+    throw new Error('SMTP email is not configured');
+  }
+
+  const transporter = getTransporter();
+  const info = await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to: getEffectiveTo(to),
+    subject,
+    html,
+  });
+  return info;
+}
+
 /**
- * Sends email confirmation. User must click the link to confirm before they can log in.
+ * Sends email confirmation after registration. User must click the link to confirm before they can log in.
+ * Email includes a congratulatory/welcome message and a link to the login page.
  */
 export async function sendVerificationEmail(to, verifyUrl, firstName) {
   const displayName = firstName || 'there';
 
-  const resend = getResend();
-  if (!resend) {
-    console.log('[Dev] RESEND_API_KEY not set. Verify link:', verifyUrl);
+  if (!isEmailConfigured()) {
+    console.log('[Dev] SMTP is not configured. Verify link:', verifyUrl);
     return null;
   }
 
-  const effectiveTo = getEffectiveTo(to);
-
-  const loginUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/login`;
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-      <h2 style="color: #164E63; margin-bottom: 16px;">Welcome to BillSplit, ${displayName}!</h2>
+      <h2 style="color: #164E63; margin-bottom: 8px;">Congratulations, ${displayName}!</h2>
+      <p style="font-size: 18px; font-weight: 600; color: #0E7490; margin-bottom: 20px;">Welcome to BillSplit.</p>
       <p style="font-size: 16px; line-height: 1.6; color: #334155;">
-        Congratulations on creating your account! We are excited to have you on board.
+        Thank you for registering. We're excited to have you on board. Your account has been created successfully.
       </p>
       <p style="font-size: 16px; line-height: 1.6; color: #334155;">
-        Please confirm your email address by clicking the button below. Once confirmed, you will be able to log in and start splitting bills with friends effortlessly.
+        To activate your account and log in, please confirm your email address by clicking the button below. After confirmation, you will be able to sign in and start splitting bills with friends.
       </p>
-      <p style="margin: 24px 0;">
+      <p style="margin: 28px 0;">
         <a href="${verifyUrl}" style="background: #06B6D4; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600;">Confirm My Email</a>
       </p>
       <p style="font-size: 14px; color: #64748b;">
-        Or copy this confirmation link: <a href="${verifyUrl}" style="color: #06B6D4;">${verifyUrl}</a>
+        Or copy this link: <a href="${verifyUrl}" style="color: #06B6D4;">${verifyUrl}</a>
       </p>
       <hr style="margin: 28px 0; border: none; border-top: 1px solid #e2e8f0;" />
       <p style="font-size: 14px; color: #64748b;">
-        After confirming, you can sign in here: <a href="${loginUrl}" style="color: #06B6D4; font-weight: 600;">Go to Login Page</a>
-      </p>
-      <p style="font-size: 14px; color: #64748b;">
         This confirmation link expires in 24 hours. If you did not create an account, you can safely ignore this email.
-      </p>
-      <p style="margin-top: 24px; font-size: 14px; color: #64748b;">
-        Best regards,<br />The BillSplit Team
       </p>
     </div>
   `;
 
-  const fromAddr = getFrom();
-  const { data, error } = await resend.emails.send({
-    from: fromAddr,
-    to: [effectiveTo],
-    subject: 'BillSplit – Confirm Your Email Address',
+  const data = await sendEmail({
+    to,
+    subject: 'BillSplit - Confirm Your Email Address',
     html,
   });
-
-  if (error) {
-    const msg = error?.message || JSON.stringify(error);
-    console.error('[Resend] Send failed:', { to, from: fromAddr, error: msg, full: error });
-    throw new Error(msg);
-  }
-  console.log('[Resend] Email sent successfully to', to, 'id:', data?.id);
+  console.log('[Mail] Verification email sent. Message ID:', data?.messageId);
   return data;
 }
 
@@ -85,13 +110,10 @@ export async function sendVerificationEmail(to, verifyUrl, firstName) {
  * Sends password reset email.
  */
 export async function sendPasswordResetEmail(to, resetUrl, firstName) {
-  const resend = getResend();
-  if (!resend) {
-    console.log('[Dev] RESEND_API_KEY not set. Reset link:', resetUrl);
+  if (!isEmailConfigured()) {
+    console.log('[Dev] SMTP is not configured. Reset link:', resetUrl);
     return null;
   }
-
-  const effectiveTo = getEffectiveTo(to);
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -106,14 +128,11 @@ export async function sendPasswordResetEmail(to, resetUrl, firstName) {
     </div>
   `;
 
-  const { data, error } = await resend.emails.send({
-    from: getFrom(),
-    to: [effectiveTo],
+  const data = await sendEmail({
+    to,
     subject: 'BillSplit - Reset Your Password',
     html,
   });
-
-  if (error) throw new Error(error.message);
   return data;
 }
 
@@ -121,13 +140,10 @@ export async function sendPasswordResetEmail(to, resetUrl, firstName) {
  * Sends guest invitation email with link to join the bill (invitation code in URL).
  */
 export async function sendGuestInviteEmail(to, joinUrl, billTitle, inviterName) {
-  const resend = getResend();
-  if (!resend) {
-    console.log('[Dev] RESEND_API_KEY not set. Guest join link:', joinUrl);
+  if (!isEmailConfigured()) {
+    console.log('[Dev] SMTP is not configured. Guest join link:', joinUrl);
     return null;
   }
-
-  const effectiveTo = getEffectiveTo(to);
   const displayBill = billTitle || 'a bill';
   const displayInviter = inviterName || 'Someone';
 
@@ -152,17 +168,11 @@ export async function sendGuestInviteEmail(to, joinUrl, billTitle, inviterName) 
     </div>
   `;
 
-  const { data, error } = await resend.emails.send({
-    from: getFrom(),
-    to: [effectiveTo],
+  const data = await sendEmail({
+    to,
     subject: `BillSplit – You're invited to "${displayBill}"`,
     html,
   });
-
-  if (error) {
-    console.error('[Resend] Guest invite send failed:', to, error?.message || error);
-    throw new Error(error?.message || 'Failed to send invite email');
-  }
-  console.log('[Resend] Guest invite sent to', to);
+  console.log('[Mail] Guest invite sent to', to);
   return data;
 }

@@ -1,3 +1,5 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
@@ -6,8 +8,17 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import guestRoutes from './routes/guest.js';
 import billsRoutes from './routes/bills.js';
+import { isEmailConfigured } from './utils/email.js';
 
-dotenv.config();
+// Load .env from the server directory so it works when run from project root or server/
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+if (isEmailConfigured()) {
+  console.log('Email (SMTP): configured - confirmation emails will be sent');
+} else {
+  console.log('Email (SMTP): not configured - set SMTP_* variables in server/.env to send emails');
+}
 
 const app = express();
 
