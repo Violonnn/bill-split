@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { X, Mail, User, Crown, Lock } from 'lucide-react';
+import { Card, CardBody } from './Card';
+import { Button } from './Button';
 
-export default function ProfileSidebar({ isOpen, onClose }) {
+export default function ProfileSidebar({ isOpen, onClose, onUpgradeClick }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [isRendered, setIsRendered] = useState(isOpen);
 
   if (!user) return null;
@@ -210,6 +214,36 @@ export default function ProfileSidebar({ isOpen, onClose }) {
                 </div>
                 <p className="text-sm text-purple-700">Limited access mode</p>
               </div>
+            )}
+
+            {/* Upgrade to Premium (Standard users only) */}
+            {user.userType === 'standard' && (
+              <Card className="mb-8 border-2 border-cyan-200 bg-gradient-to-br from-cyan-50 to-white">
+                <CardBody className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 bg-cyan-100 rounded-lg flex-shrink-0">
+                      <Crown size={28} className="text-cyan-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-gray-900">Upgrade to Premium</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Get unlimited bills per month and unlimited people per bill. Pay once to upgrade.
+                      </p>
+                      <Button
+                        variant="primary"
+                        onClick={() => {
+                          onUpgradeClick && onUpgradeClick();
+                          onClose();
+                        }}
+                        className="mt-4 flex items-center gap-2"
+                      >
+                        <Crown size={18} />
+                        Upgrade to Premium
+                      </Button>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
             )}
           </div>
 

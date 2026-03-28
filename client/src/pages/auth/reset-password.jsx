@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { apiRequest } from '../../api/client.js';
 
 export default function ResetPassword() {
@@ -10,8 +10,6 @@ export default function ResetPassword() {
 
   const [formData, setFormData] = useState({ password: '', confirmPassword: '' });
   const [errors, setErrors] = useState({});
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -118,22 +116,13 @@ export default function ResetPassword() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData((p) => ({ ...p, password: e.target.value }))}
-                    placeholder="New Password"
-                    className="w-full px-4 py-2.5 pr-10 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
+                <input
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData((p) => ({ ...p, password: e.target.value }))}
+                  placeholder="New Password"
+                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
+                />
                 {errors.password && (
                   <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                     <AlertCircle size={12} /> {errors.password}
@@ -142,22 +131,13 @@ export default function ResetPassword() {
               </div>
 
               <div>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData((p) => ({ ...p, confirmPassword: e.target.value }))}
-                    placeholder="Confirm Password"
-                    className="w-full px-4 py-2.5 pr-10 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-                  >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
+                <input
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData((p) => ({ ...p, confirmPassword: e.target.value }))}
+                  placeholder="Confirm Password"
+                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
+                />
                 {errors.confirmPassword && (
                   <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                     <AlertCircle size={12} /> {errors.confirmPassword}

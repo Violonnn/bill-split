@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { apiRequest } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 

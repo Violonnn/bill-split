@@ -543,7 +543,7 @@ export default function BillView() {
                   paidBy: e.target.value,
                 }))
               }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+              className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
               disabled={addingExpense}
             >
               <option value="">Select who paid</option>
@@ -553,7 +553,7 @@ export default function BillView() {
                 const isHost = hostId && mid === hostId;
                 return (
                   <option key={mid} value={mid}>
-                    {member.name} {isHost ? '(Host)' : ''} {member.email ? ` — ${member.email}` : ''}
+                    {member.name} {isHost ? '(Host)' : ''}
                   </option>
                 );
               })}
@@ -575,7 +575,7 @@ export default function BillView() {
                   splitAmong: v === 'custom' && bill?.members?.length ? bill.members.map((m) => m._id?.toString?.() ?? m._id) : [],
                 }));
               }}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+              className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
               disabled={addingExpense || !canUseCustomSplit}
             >
               <option value="equally">Equally divided</option>

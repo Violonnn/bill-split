@@ -38,6 +38,7 @@ export default function EditBill() {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [addingUserId, setAddingUserId] = useState(null);
+  const [searchError, setSearchError] = useState('');
 
   const fetchBill = useCallback(async () => {
     try {
@@ -236,15 +237,27 @@ export default function EditBill() {
       return;
     }
     const q = searchQuery.trim();
+    if (!q) {
+      setSearchError('Email/Username/Nickname required');
+      setSearchResults([]);
+      return;
+    }
     if (q.length < 2) {
       setSearchResults([]);
       return;
     }
     setSearching(true);
     setError('');
+    setSearchError('');
     try {
       const { users } = await apiRequest(`/api/bills/${id}/search-users?q=${encodeURIComponent(q)}`);
-      setSearchResults(users || []);
+      if (!users || users.length === 0) {
+        setSearchError('User not found');
+        setSearchResults([]);
+      } else {
+        setSearchError('');
+        setSearchResults(users);
+      }
     } catch (err) {
       setError(err.message || 'Failed to search');
       setSearchResults([]);
@@ -282,6 +295,13 @@ export default function EditBill() {
 
   return (
     <MainLayout title={bill ? `Edit: ${bill.title}` : 'Edit Bill'}>
+      <button
+        onClick={() => navigate('/bills')}
+        className="flex items-center gap-2 mb-6 text-[#06B6D4] hover:text-[#0891b2] font-semibold transition"
+      >
+        <ArrowLeft size={20} />
+        Back
+      </button>
       {error && <Alert type="error" message={error} />}
       {inviteSuccess && <Alert type="success" message={inviteSuccess} />}
       {(upgradeMessage || isStandardAtMemberLimit) && (
@@ -294,7 +314,7 @@ export default function EditBill() {
       {loading ? (
         <LoadingSpinner />
       ) : bill ? (
-        <div className="space-y-6 max-w-4xl">
+        <div className="space-y-6">
           {/* Bill Title Section */}
           <Card>
             <CardHeader>
@@ -372,14 +392,6 @@ export default function EditBill() {
                   Add Guest User
                 </Button>
                 <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowInviteForm(true)}
-                  disabled={isStandardAtMemberLimit}
-                >
-                  Invite Guest (email)
-                </Button>
-                <Button
                   variant="primary"
                   size="sm"
                   onClick={() => setShowAddMember(true)}
@@ -401,23 +413,33 @@ export default function EditBill() {
                   <input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setSearchError('');
+                    }}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSearchUsers())}
                     placeholder="Email, name, or nickname (min 2 characters)"
-                    className="flex-1 min-w-[200px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+                    className={`flex-1 min-w-[200px] px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition ${
+                      searchError
+                        ? 'border-red-500 focus:ring-red-300'
+                        : 'border-gray-300 focus:ring-[#06B6D4]'
+                    }`}
                   />
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
                     onClick={handleSearchUsers}
-                    disabled={searching || searchQuery.trim().length < 2}
+                    disabled={searching}
                     className="flex items-center gap-2"
                   >
                     <Search size={16} />
                     {searching ? 'Searching...' : 'Search'}
                   </Button>
                 </div>
+                {searchError && (
+                  <div className="mt-2 text-red-600 text-sm">{searchError}</div>
+                )}
                 {searchResults.length > 0 && (
                   <ul className="mt-3 space-y-2">
                     {searchResults.map((u) => (

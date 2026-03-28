@@ -10,6 +10,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import Alert from '../components/Alert';
 import Modal from '../components/Modal';
 import BillViewModal from '../components/BillViewModal';
+import BillEditModal from '../components/BillEditModal';
 import UpgradePrompt from '../components/UpgradePrompt';
 import { Trash2, Edit, Archive, Eye, Plus, AlertCircle, Copy, Check } from 'lucide-react';
 
@@ -29,6 +30,7 @@ export default function Bills() {
   const [deleting, setDeleting] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
   const [selectedBillId, setSelectedBillId] = useState(null);
+  const [selectedBillForEdit, setSelectedBillForEdit] = useState(null);
 
   const fetchBills = useCallback(async () => {
     try {
@@ -129,8 +131,8 @@ export default function Bills() {
       <div className="bg-white rounded-t-lg shadow-sm p-6 md:p-8 mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">Bills</h1>
-            <p className="text-sm text-gray-600">Manage your expense splits and shared bills</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1"></h1>
+            <p className="text-sm text-gray-600"></p>
           </div>
           <Button
             variant="primary"
@@ -211,7 +213,7 @@ export default function Bills() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => navigate(`/edit-bill/${bill._id}`)}
+                    onClick={() => setSelectedBillForEdit(bill._id)}
                     className="flex-1"
                   >
                     Edit
@@ -349,6 +351,13 @@ export default function Bills() {
         isOpen={!!selectedBillId}
         onClose={() => setSelectedBillId(null)}
         billId={selectedBillId}
+      />
+
+      {/* Bill Edit Modal */}
+      <BillEditModal
+        isOpen={!!selectedBillForEdit}
+        onClose={() => setSelectedBillForEdit(null)}
+        billId={selectedBillForEdit}
       />
     </MainLayout>
   );
