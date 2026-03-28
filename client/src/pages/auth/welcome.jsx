@@ -1,13 +1,16 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Wallet, Receipt, Users, Calculator, BarChart3, TrendingUp, Heart, Menu, Mail } from 'lucide-react';
+import { Wallet, Receipt, Users, Calculator, BarChart3, TrendingUp, Heart, Menu, Mail, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { apiRequest } from '../../api/client.js';
 
 export default function Welcome() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, loading: authLoading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [invitationCodeError, setInvitationCodeError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [invitationCode, setInvitationCode] = useState('');
   const [showRegistrationBanner, setShowRegistrationBanner] = useState(false);
 
@@ -27,6 +30,33 @@ export default function Welcome() {
       navigate('/dashboard', { replace: true });
     }
   }, [authLoading, user, navigate]);
+
+  const handleAccessBill = async (e) => {
+    e.preventDefault();
+    setInvitationCodeError('');
+
+    if (!invitationCode?.trim()) {
+      setInvitationCodeError('Invitation code is required');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const res = await apiRequest('/api/guest/search-bill', {
+        method: 'POST',
+        body: JSON.stringify({ code: invitationCode.trim().toUpperCase() }),
+      });
+
+      if (res.billId) {
+        navigate(`/guest/join?code=${invitationCode.toUpperCase()}`);
+      }
+    } catch (err) {
+      setInvitationCodeError(err.message || 'Invitation does not exist');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen w-full bg-[#F0F9FA] text-gray-800 overflow-x-hidden">
@@ -340,22 +370,44 @@ export default function Welcome() {
           No problem! Use an invitation code to join a bill as a guest and start splitting instantly.
         </p>
 
-        <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 max-w-2xl mx-auto px-4">
-          <input
-            type="text"
-            value={invitationCode}
-            onChange={(e) => setInvitationCode(e.target.value.toUpperCase())}
-            placeholder="Enter Invitation Code"
-            className="px-4 py-3 rounded-lg border-2 border-[#67E8F9] w-full text-sm sm:text-base focus:outline-none focus:border-white focus:ring-2 focus:ring-[#67E8F9] bg-white uppercase"
-          />
+        <form
+          onSubmit={handleAccessBill}
+          className="flex flex-col sm:flex-row items-stretch justify-center gap-3 sm:gap-4 max-w-2xl mx-auto px-4"
+        >
+          <div className="w-full sm:flex-1">
+            <input
+              type="text"
+              value={invitationCode}
+              onChange={(e) => {
+                setInvitationCode(e.target.value.toUpperCase());
+                setInvitationCodeError('');
+              }}
+              onFocus={() => setInvitationCodeError('')}
+              placeholder="Enter Invitation Code"
+              className={`w-full px-4 h-12 rounded-lg border-2 text-sm sm:text-base focus:outline-none focus:ring-2 bg-white uppercase ${
+                invitationCodeError
+                  ? 'border-red-500 focus:ring-red-300'
+                  : invitationCode.trim()
+                  ? 'border-green-500 focus:ring-green-300'
+                  : 'border-[#67E8F9] focus:border-white focus:ring-[#67E8F9]'
+              }`}
+            />
+          
+            {invitationCodeError && (
+              <div className="flex items-center gap-1 mt-2 text-red-300 text-xs">
+                <AlertCircle size={12} /> {invitationCodeError}
+              </div>
+            )}
+          </div>
 
           <button
-            onClick={() => navigate(invitationCode ? `/guest/join?code=${invitationCode}` : '/guest/join')}
-            className="px-6 py-3 bg-[#67E8F9] text-[#164E63] rounded-lg hover:bg-white transition shadow-lg whitespace-nowrap text-sm sm:text-base font-bold hover:shadow-xl border-2 border-[#67E8F9] hover:border-white"
+            type="submit"
+            disabled={submitting}
+            className="w-full sm:w-auto px-6 h-12 bg-[#67E8F9] text-[#164E63] rounded-lg hover:bg-white transition shadow-lg whitespace-nowrap text-sm sm:text-base font-bold hover:shadow-xl border-2 border-[#67E8F9] hover:border-white disabled:opacity-70 disabled:cursor-not-allowed min-w-[120px] flex justify-center items-center"
           >
-            Access Bill
+            {submitting ? 'Checking...' : 'Access Bill'}
           </button>
-        </div>
+        </form>     
       </section>
 
       {/* ================= FOOTER ================= */}

@@ -22,7 +22,6 @@ export default function Sidebar() {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/bills', icon: FileText, label: 'Bills' },
     { path: '/archive', icon: Archive, label: 'Archive' },
-    { path: '/profile', icon: User, label: 'Profile' },
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -49,51 +48,37 @@ export default function Sidebar() {
         } z-40 md:z-10`}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 p-6 border-b border-cyan-400">
+        <div className="flex items-center gap-3 p-6  border-cyan-400">
           <Receipt size={32} className="text-cyan-100" />
           <h1 className="text-2xl font-bold text-white">BillSplit</h1>
         </div>
 
-        {/* User Info - white/cyan-50 so labels and type are clearly visible */}
-        {user && (
-          <div className="p-6 border-b border-cyan-400">
-            <p className="text-sm text-cyan-100">Logged in as</p>
-            <p className="font-semibold text-white mt-1">
-              {[user.firstName, user.lastName].filter(Boolean).join(' ') || user.nickname || user.email}
-            </p>
-            <p className="text-xs text-white/90 capitalize mt-1">{user.userType} Account</p>
-          </div>
-        )}
 
         {/* Navigation Menu - same bright white as Logout for inactive items */}
         <nav className="flex-1 p-4 space-y-2">
-          {menuItems.map(({ path, icon: Icon, label }) => (
-            <Link
-              key={path}
-              to={path}
-              onClick={() => setIsOpen(false)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-colors ${
-                isActive(path)
-                  ? 'bg-white text-[#0891b2] shadow-lg [&_svg]:text-[#0891b2]'
-                  : '!text-white hover:bg-cyan-400/30 [&_svg]:!text-white'
-              }`}
-            >
-              <Icon size={22} className="flex-shrink-0" />
-              <span>{label}</span>
-            </Link>
-          ))}
+          {/* Features Section */}
+          <div className="mb-4">
+            <p className="text-xs font-bold text-cyan-100 uppercase tracking-widest px-4 mb-3">Features</p>
+            <div className="space-y-2">
+              {menuItems.map(({ path, icon: Icon, label }) => (
+                <Link
+                  key={path}
+                  to={path}
+                  onClick={() => setIsOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold transition-colors ${
+                    isActive(path)
+                      ? 'bg-white text-[#0891b2] shadow-lg [&_svg]:text-[#0891b2]'
+                      : '!text-white hover:bg-cyan-400/30 [&_svg]:!text-white'
+                  }`}
+                >
+                  <Icon size={22} className="flex-shrink-0" />
+                  <span>{label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
         </nav>
 
-        {/* Logout Button - same clear text style */}
-        <div className="p-4 border-t border-cyan-400">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-base font-semibold text-white hover:bg-cyan-400/30 transition-colors"
-          >
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
-        </div>
       </aside>
 
       {/* Overlay for mobile */}

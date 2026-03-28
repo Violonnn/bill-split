@@ -352,7 +352,7 @@ router.post('/login', async (req, res) => {
     ).select('+password');
 
     if (!user) {
-      return res.status(401).json({ error: 'Incorrect username or password' });
+      return res.status(401).json({ error: 'Username or email not found', code: 'USERNAME_NOT_FOUND' });
     }
 
     if (user.userType === USER_TYPES.GUEST) {
@@ -364,7 +364,7 @@ router.post('/login', async (req, res) => {
 
     const match = await user.comparePassword(password);
     if (!match) {
-      return res.status(401).json({ error: 'Incorrect username or password' });
+      return res.status(401).json({ error: 'Password incorrect', code: 'PASSWORD_INCORRECT' });
     }
 
     // Standard users must confirm their email before logging in

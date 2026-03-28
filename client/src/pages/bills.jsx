@@ -9,6 +9,8 @@ import EmptyState from '../components/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Alert from '../components/Alert';
 import Modal from '../components/Modal';
+import BillViewModal from '../components/BillViewModal';
+import BillEditModal from '../components/BillEditModal';
 import UpgradePrompt from '../components/UpgradePrompt';
 import { Trash2, Edit, Archive, Eye, Plus, AlertCircle, Copy, Check } from 'lucide-react';
 
@@ -27,6 +29,8 @@ export default function Bills() {
   const [archiveConfirm, setArchiveConfirm] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
+  const [selectedBillId, setSelectedBillId] = useState(null);
+  const [selectedBillForEdit, setSelectedBillForEdit] = useState(null);
 
   const fetchBills = useCallback(async () => {
     try {
@@ -123,18 +127,22 @@ export default function Bills() {
         <Alert type="error" title="Error" message={error} />
       )}
 
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <p className="text-gray-600">Manage your expense splits</p>
+      {/* Header Container */}
+      <div className="bg-white rounded-t-lg shadow-sm p-6 md:p-8 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-1"></h1>
+            <p className="text-sm text-gray-600"></p>
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2"
+          >
+            <Plus size={20} />
+            New Bill
+          </Button>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2"
-        >
-          <Plus size={20} />
-          New Bill
-        </Button>
       </div>
 
       {loading ? (
@@ -150,83 +158,90 @@ export default function Bills() {
           </Button>
         </EmptyState>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b-2 border-gray-200">
-                <th className="px-6 py-4 text-left font-semibold text-gray-900">Bill Name</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-900">Members</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-900">Total Amount</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-900">Invite Code</th>
-                <th className="px-6 py-4 text-right font-semibold text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeBills.map((bill) => (
-                <tr key={bill._id} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">{bill.title}</td>
-                  <td className="px-6 py-4 text-gray-600">{bill.members?.length || 0}</td>
-                  <td className="px-6 py-4 font-semibold text-gray-900">
-                    ${(bill.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0).toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {activeBills.map((bill) => {
+            const totalAmount = (bill.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
+            return (
+              <div key={bill._id} className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
+                {/* Header */}
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-lg font-bold text-gray-900">{bill.title}</h3>
+                  <p className="text-sm text-gray-600 mt-1">{bill.members?.length || 0} members</p>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 space-y-4">
+                  {/* Total Amount */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">Total Amount</p>
+                    <p className="text-2xl font-bold text-gray-900">${totalAmount.toFixed(2)}</p>
+                  </div>
+
+                  {/* Invite Code */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Invite Code</p>
                     <div className="flex items-center gap-2">
-                      <code className="px-3 py-1 bg-gray-100 text-gray-900 rounded font-mono text-sm">
+                      <code className="flex-1 px-3 py-1 bg-white border border-gray-300 rounded font-mono text-sm text-gray-900">
                         {bill.invitationCode}
                       </code>
                       <button
                         onClick={() => copyCode(bill.invitationCode)}
                         className="p-1 hover:bg-gray-200 rounded transition-colors"
+                        title="Copy invitation code"
                       >
                         {copiedCode === bill.invitationCode ? (
-                          <Check size={16} className="text-green-600" />
+                          <Check size={18} className="text-green-600" />
                         ) : (
-                          <Copy size={16} className="text-gray-600" />
+                          <Copy size={18} className="text-gray-600" />
                         )}
                       </button>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => navigate(`/bill/${bill._id}`)}
-                        className="flex items-center gap-1"
-                      >
-                        <Eye size={16} />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => navigate(`/edit-bill/${bill._id}`)}
-                        className="flex items-center gap-1"
-                      >
-                        <Edit size={16} />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setArchiveConfirm(bill._id)}
-                        className="flex items-center gap-1"
-                        title="Archive bill"
-                      >
-                        <Archive size={16} />
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => setDeleteConfirm(bill._id)}
-                        className="flex items-center gap-1"
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="p-4 bg-gray-50 border-t border-gray-200 flex gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setSelectedBillId(bill._id)}
+                    className="flex-1 flex items-center justify-center gap-1"
+                  >
+                    <Eye size={16} />
+                    View
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setSelectedBillForEdit(bill._id)}
+                    className="flex-1"
+                  >
+                    Edit
+                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setArchiveConfirm(bill._id)}
+                      className="flex items-center gap-1 px-2"
+                      title="Archive bill"
+                    >
+                      <Archive size={16} />
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setDeleteConfirm(bill._id)}
+                      className="flex items-center gap-1 px-2"
+                      title="Delete bill"
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -330,6 +345,20 @@ export default function Bills() {
           </div>
         </div>
       </Modal>
+
+      {/* Bill View Modal */}
+      <BillViewModal
+        isOpen={!!selectedBillId}
+        onClose={() => setSelectedBillId(null)}
+        billId={selectedBillId}
+      />
+
+      {/* Bill Edit Modal */}
+      <BillEditModal
+        isOpen={!!selectedBillForEdit}
+        onClose={() => setSelectedBillForEdit(null)}
+        billId={selectedBillForEdit}
+      />
     </MainLayout>
   );
 }
