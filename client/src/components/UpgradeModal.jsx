@@ -5,13 +5,13 @@ import { apiRequest } from '../api/client.js';
 import { Crown, CreditCard, Zap, Users, FileText } from 'lucide-react';
 
 export default function UpgradeModal({ isOpen, onClose, onProceedToPayment }) {
-  const [amount, setAmount] = useState({ amountCents: 499, amountFormatted: '$4.99' });
+  const [amount, setAmount] = useState({ amountCents: 499, amountFormatted: '₱4.99' });
 
   useEffect(() => {
     if (isOpen) {
       apiRequest('/api/auth/premium-upgrade-info')
-        .then((data) => setAmount({ amountCents: data.amountCents, amountFormatted: data.amountFormatted || `$${(data.amountCents / 100).toFixed(2)}` }))
-        .catch(() => setAmount({ amountCents: 499, amountFormatted: '$4.99' }));
+        .then((data) => setAmount({ amountCents: data.amountCents, amountFormatted: data.amountFormatted || `₱${(data.amountCents / 100).toFixed(2)}` }))
+        .catch(() => setAmount({ amountCents: 499, amountFormatted: '₱4.99' }));
     }
   }, [isOpen]);
 

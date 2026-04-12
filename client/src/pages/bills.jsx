@@ -11,8 +11,9 @@ import Alert from '../components/Alert';
 import Modal from '../components/Modal';
 import BillViewModal from '../components/BillViewModal';
 import BillEditModal from '../components/BillEditModal';
+import MyPaidBillsModal from '../components/MyPaidBillsModal';
 import UpgradePrompt from '../components/UpgradePrompt';
-import { Trash2, Edit, Archive, Eye, Plus, AlertCircle, Copy, Check } from 'lucide-react';
+import { Trash2, Edit, Archive, Eye, Plus, AlertCircle, Copy, Check, Wallet } from 'lucide-react';
 
 export default function Bills() {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ export default function Bills() {
   const [copiedCode, setCopiedCode] = useState('');
   const [selectedBillId, setSelectedBillId] = useState(null);
   const [selectedBillForEdit, setSelectedBillForEdit] = useState(null);
+  const [showMyPaidBills, setShowMyPaidBills] = useState(false);
 
   const fetchBills = useCallback(async () => {
     try {
@@ -127,22 +129,24 @@ export default function Bills() {
         <Alert type="error" title="Error" message={error} />
       )}
 
-      {/* Header Container */}
-      <div className="bg-white rounded-t-lg shadow-sm p-6 md:p-8 mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1"></h1>
-            <p className="text-sm text-gray-600"></p>
-          </div>
-          <Button
-            variant="primary"
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus size={20} />
-            New Bill
-          </Button>
-        </div>
+      {/* Action Buttons */}
+      <div className="flex justify-start gap-3 mb-6">
+        <Button
+          variant="primary"
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2"
+        >
+          <Plus size={20} />
+          New Bill
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => setShowMyPaidBills(true)}
+          className="flex items-center gap-2"
+        >
+          <Wallet size={20} />
+          My Paid Expenses
+        </Button>
       </div>
 
       {loading ? (
@@ -174,7 +178,7 @@ export default function Bills() {
                   {/* Total Amount */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-xs font-semibold text-gray-600 mb-1">Total Amount</p>
-                    <p className="text-2xl font-bold text-gray-900">${totalAmount.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-gray-900">₱{totalAmount.toFixed(2)}</p>
                   </div>
 
                   {/* Invite Code */}
@@ -261,9 +265,6 @@ export default function Bills() {
           {upgradeMessage && (
             <UpgradePrompt message={upgradeMessage} className="mb-4" />
           )}
-          {createError && (
-            <Alert type="error" message={createError} dismissible={false} />
-          )}
           <div>
             <label className="block text-sm font-medium text-gray-900 mb-1">
               Bill Name
@@ -271,11 +272,18 @@ export default function Bills() {
             <input
               type="text"
               value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
+              onChange={(e) => { setNewTitle(e.target.value); setCreateError(''); }}
               placeholder="e.g., Weekend Trip"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4] ${
+                createError ? 'border-red-500' : 'border-gray-300'
+              }`}
               disabled={creating}
             />
+            {createError && (
+              <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                <AlertCircle size={12} /> {createError}
+              </div>
+            )}
           </div>
           <div className="flex gap-2 justify-end">
             <Button
@@ -358,6 +366,12 @@ export default function Bills() {
         isOpen={!!selectedBillForEdit}
         onClose={() => setSelectedBillForEdit(null)}
         billId={selectedBillForEdit}
+      />
+
+      {/* My Paid Bills Modal */}
+      <MyPaidBillsModal
+        isOpen={showMyPaidBills}
+        onClose={() => setShowMyPaidBills(false)}
       />
     </MainLayout>
   );

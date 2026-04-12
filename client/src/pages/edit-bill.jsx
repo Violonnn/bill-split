@@ -438,7 +438,7 @@ export default function EditBill() {
                   </Button>
                 </div>
                 {searchError && (
-                  <div className="mt-2 text-red-600 text-sm">{searchError}</div>
+                  <div className="mt-2 text-red-600 text-xs">{searchError}</div>
                 )}
                 {searchResults.length > 0 && (
                   <ul className="mt-3 space-y-2">

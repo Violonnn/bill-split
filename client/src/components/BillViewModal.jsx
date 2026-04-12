@@ -1,18 +1,38 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/client.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import Modal from './Modal';
 import { Button } from './Button';
 import LoadingSpinner from './LoadingSpinner';
 import Alert from './Alert';
-import { DollarSign, Users, Copy, Check, Plus, Trash2 } from 'lucide-react';
+import {
+  Copy,
+  Check,
+  Plus,
+  Trash2,
+  Receipt,
+  Wallet,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  UserCheck,
+  CircleDollarSign,
+  Handshake,
+  Users,
+  Shield,
+  ArrowRight,
+  ClipboardList,
+} from 'lucide-react';
 
 export default function BillViewModal({ isOpen, onClose, billId }) {
+  const { user } = useAuth();
   const [bill, setBill] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [addingExpense, setAddingExpense] = useState(false);
+  const [expandedExpense, setExpandedExpense] = useState(null);
   const [expenseForm, setExpenseForm] = useState({
     description: '',
     amount: '',
@@ -20,7 +40,6 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
     splitType: 'equally',
     splitAmong: [],
   });
-  const [paymentErrors, setPaymentErrors] = useState({});
 
   useEffect(() => {
     if (!isOpen || !billId) return;
@@ -47,59 +66,6 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  // Calculate split summary for each member
-  const calculateSplitSummary = () => {
-    if (!bill.members || !bill.expenses) return {};
-
-    const summary = {};
-
-    // Initialize each member's payment and share
-    bill.members.forEach((member) => {
-      summary[member._id] = {
-        member,
-        paid: 0,
-        share: 0,
-      };
-    });
-
-    // Calculate how much each member paid
-    bill.expenses.forEach((expense) => {
-      const paidByMemberId = expense.paidBy?._id || expense.paidBy;
-      if (summary[paidByMemberId]) {
-        summary[paidByMemberId].paid += expense.amount || 0;
-      }
-    });
-
-    // Calculate each member's share
-    bill.expenses.forEach((expense) => {
-      const splitCount = expense.splitAmong?.length || bill.members.length;
-      const sharePerPerson = (expense.amount || 0) / splitCount;
-
-      if (expense.splitAmong && expense.splitAmong.length > 0) {
-        expense.splitAmong.forEach((memberId) => {
-          if (summary[memberId]) {
-            summary[memberId].share += sharePerPerson;
-          }
-        });
-      } else {
-        // Split equally among all members
-        bill.members.forEach((member) => {
-          if (summary[member._id]) {
-            summary[member._id].share += sharePerPerson;
-          }
-        });
-      }
-    });
-
-    // Calculate balance (positive = owed money, negative = owes money)
-    Object.keys(summary).forEach((memberId) => {
-      summary[memberId].balance = summary[memberId].paid - summary[memberId].share;
-    });
-
-    return summary;
-  };
-
-  // Get default paid by person (bill owner)
   const getDefaultPaidBy = () => {
     if (!bill?.members?.length) return '';
     const hostId = bill.createdBy?.toString?.() || bill.createdBy;
@@ -108,8 +74,35 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
     return bill.members[0]?._id?.toString?.() || bill.members[0]?._id || '';
   };
 
-  // Custom split only works with 3+ members
-  const canUseCustomSplit = (bill?.members?.length || 0) > 2;
+  const canUseCustomSplit = (bill?.members?.length || 0) >= 2;
+
+  const getUserSummary = () => {
+    if (!bill?.split?.balances || !user) return null;
+    const userId = user._id?.toString?.() || user._id;
+    const entry = bill.split.balances.find(
+      (b) => b.userId?.toString?.() === userId || b.userId === userId
+    );
+    if (!entry) return null;
+    return { totalPaid: entry.totalPaid, share: entry.totalOwed, balance: entry.balance };
+  };
+
+  const getExpenseSplitDetails = (expense) => {
+    if (!bill?.members) return [];
+    const splitAmongIds = Array.isArray(expense.splitAmong) ? expense.splitAmong : [];
+    const isCustom = expense.splitType === 'custom' && splitAmongIds.length > 0;
+    const targetMembers = isCustom
+      ? bill.members.filter((m) => {
+          const mid = m._id?.toString?.() || m._id;
+          return splitAmongIds.some((sid) => (sid?.toString?.() || sid) === mid);
+        })
+      : bill.members;
+    const perPerson = targetMembers.length > 0 ? (expense.amount || 0) / targetMembers.length : 0;
+    return targetMembers.map((m) => ({
+      name: m.name,
+      _id: m._id,
+      share: perPerson,
+    }));
+  };
 
   const handleAddExpense = async (e) => {
     e.preventDefault();
@@ -123,6 +116,7 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
       setError('Please enter a valid amount greater than 0.');
       return;
     }
+    const isPersonal = expenseForm.splitType === 'personal';
     const isCustom = expenseForm.splitType === 'custom' && canUseCustomSplit;
     if (isCustom && (!expenseForm.splitAmong || expenseForm.splitAmong.length === 0)) {
       setError('Select at least one person to split the expense among.');
@@ -136,9 +130,11 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
         description: expenseForm.description.trim(),
         amount: amountNum,
         paidBy: expenseForm.paidBy,
-        splitType: expenseForm.splitType,
+        splitType: isPersonal ? 'custom' : expenseForm.splitType,
       };
-      if (isCustom && expenseForm.splitAmong?.length) {
+      if (isPersonal) {
+        body.splitAmong = [expenseForm.paidBy];
+      } else if (isCustom && expenseForm.splitAmong?.length) {
         body.splitAmong = expenseForm.splitAmong;
       }
       await apiRequest(`/api/bills/${billId}/expenses`, {
@@ -177,7 +173,7 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
 
   if (!bill && loading) {
     return (
-      <Modal isOpen={isOpen} onClose={onClose} title="View Bill" size="lg">
+      <Modal isOpen={isOpen} onClose={onClose} title="View Bill" size="xl">
         <LoadingSpinner />
       </Modal>
     );
@@ -188,129 +184,156 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
   }
 
   const totalAmount = (bill.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
+  const userSummary = getUserSummary();
+  const allSettled = bill.split?.settlements?.length === 0 && (bill.expenses?.length || 0) > 0;
 
   return (
     <>
-    <Modal isOpen={isOpen} onClose={onClose} title={bill.title} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={bill.title} size="xl">
       {error && <Alert type="error" message={error} />}
 
-      <div className="space-y-6">
-        {/* Summary Row */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-blue-50 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <DollarSign size={18} className="text-blue-600" />
-              <label className="text-sm font-semibold text-blue-600">Total Amount</label>
-            </div>
-            <p className="text-2xl font-bold text-blue-900">${totalAmount.toFixed(2)}</p>
+      <div className="space-y-5">
+
+        {/* ─── Header Info ─── */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+            <span className="flex items-center gap-1.5">
+              <UserCheck size={14} />
+              {bill.members?.find(m => {
+                const mid = m._id?.toString?.() || m._id;
+                const ownerId = bill.createdBy?.toString?.() || bill.createdBy;
+                return mid === ownerId;
+              })?.name || 'Unknown'}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Calendar size={14} />
+              {bill.createdAt ? new Date(bill.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
+            </span>
           </div>
-          <div className="bg-purple-50 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Users size={18} className="text-purple-600" />
-              <label className="text-sm font-semibold text-purple-600">Members</label>
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${allSettled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${allSettled ? 'bg-green-500' : 'bg-amber-500'}`} />
+            {allSettled ? 'Settled' : 'Ongoing'}
+          </span>
+        </div>
+
+        {/* ─── Financial Summary ─── */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-blue-50 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CircleDollarSign size={14} className="text-blue-600" />
+              <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide">Total</p>
             </div>
-            <p className="text-2xl font-bold text-purple-900">{bill.members?.length || 0}</p>
+            <p className="text-lg font-bold text-blue-900">₱{totalAmount.toFixed(2)}</p>
+          </div>
+          <div className="bg-purple-50 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Receipt size={14} className="text-purple-600" />
+              <p className="text-[10px] font-semibold text-purple-600 uppercase tracking-wide">Your Share</p>
+            </div>
+            <p className="text-lg font-bold text-purple-900">₱{(userSummary?.share ?? 0).toFixed(2)}</p>
+          </div>
+          <div className="bg-cyan-50 rounded-xl p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Wallet size={14} className="text-cyan-600" />
+              <p className="text-[10px] font-semibold text-cyan-600 uppercase tracking-wide">You Paid</p>
+            </div>
+            <p className="text-lg font-bold text-cyan-900">₱{(userSummary?.totalPaid ?? 0).toFixed(2)}</p>
+          </div>
+          <div className={`rounded-xl p-3 ${
+            (userSummary?.balance ?? 0) > 0 ? 'bg-green-50' : (userSummary?.balance ?? 0) < 0 ? 'bg-red-50' : 'bg-gray-50'
+          }`}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Handshake size={14} className={(userSummary?.balance ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'} />
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Balance</p>
+            </div>
+            <p className={`text-lg font-bold ${
+              (userSummary?.balance ?? 0) > 0 ? 'text-green-700' : (userSummary?.balance ?? 0) < 0 ? 'text-red-700' : 'text-gray-900'
+            }`}>
+              {(userSummary?.balance ?? 0) > 0
+                ? `+₱${userSummary.balance.toFixed(2)}`
+                : (userSummary?.balance ?? 0) < 0
+                  ? `-₱${Math.abs(userSummary.balance).toFixed(2)}`
+                  : '₱0.00'}
+            </p>
+            <p className="text-[10px] text-gray-500 mt-0.5">
+              {(userSummary?.balance ?? 0) > 0 ? 'You are owed' : (userSummary?.balance ?? 0) < 0 ? 'You owe' : 'All settled'}
+            </p>
           </div>
         </div>
 
-        {/* Split Summary */}
+        {/* ─── Members Table ─── */}
         {bill.members?.length > 0 && (
           <div>
-            <label className="text-sm font-semibold text-gray-700 block mb-3">Split Summary</label>
-            <div className="space-y-2">
-              {Object.values(calculateSplitSummary())
-                .sort((a, b) => b.balance - a.balance)
-                .map((item) => {
-                  const isOwed = item.balance > 0;
-                  const displayBalance = Math.abs(item.balance);
+            <div className="flex items-center gap-2 mb-2">
+              <Users size={16} className="text-gray-500" />
+              <p className="text-sm font-semibold text-gray-700">Members ({bill.members.length})</p>
+            </div>
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <div className="hidden sm:grid grid-cols-4 px-4 py-2 bg-gray-50 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                <span>Name</span>
+                <span className="text-right">Paid</span>
+                <span className="text-right">Share</span>
+                <span className="text-right">Balance</span>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {bill.members.map((member) => {
+                  const mid = member._id?.toString?.() || member._id;
+                  const ownerId = bill.createdBy?.toString?.() || bill.createdBy;
+                  const isOwner = mid === ownerId;
+                  const balanceEntry = bill.split?.balances?.find(
+                    (b) => b.userId?.toString?.() === mid || b.userId === mid
+                  );
+                  const paid = balanceEntry?.totalPaid ?? 0;
+                  const owed = balanceEntry?.totalOwed ?? 0;
+                  const balance = balanceEntry?.balance ?? 0;
                   return (
-                    <div
-                      key={item.member._id}
-                      className={`flex items-center justify-between p-3 rounded-lg ${
-                        isOwed ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-full bg-gray-300 flex items-center justify-center text-white text-xs font-bold">
-                          {item.member.firstName?.charAt(0)}{item.member.lastName?.charAt(0)}
+                    <div key={mid} className="grid grid-cols-1 sm:grid-cols-4 gap-0.5 sm:gap-0 px-4 py-3 items-center hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#06B6D4] to-[#0891b2] flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                          {member.name?.charAt(0)?.toUpperCase() || '?'}
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {item.member.firstName && item.member.lastName
-                              ? `${item.member.firstName} ${item.member.lastName}`
-                              : item.member.email || 'Unknown'}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {member.name}
+                            {isOwner && (
+                              <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-cyan-50 text-cyan-700 text-[9px] font-semibold rounded-full">
+                                <Shield size={8} />
+                                Owner
+                              </span>
+                            )}
                           </p>
+                          <p className="text-[10px] text-gray-400 truncate">{member.email}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className={`text-sm font-semibold ${isOwed ? 'text-green-700' : 'text-red-700'}`}>
-                          {isOwed ? 'is owed' : 'owes'}
-                        </p>
-                        <p className={`text-sm font-bold ${isOwed ? 'text-green-700' : 'text-red-700'}`}>
-                          ${displayBalance.toFixed(2)}
-                        </p>
-                      </div>
+                      <p className="text-xs font-medium text-gray-900 sm:text-right">
+                        <span className="sm:hidden text-[10px] text-gray-400 mr-1">Paid:</span>
+                        ₱{paid.toFixed(2)}
+                      </p>
+                      <p className="text-xs font-medium text-gray-900 sm:text-right">
+                        <span className="sm:hidden text-[10px] text-gray-400 mr-1">Share:</span>
+                        ₱{owed.toFixed(2)}
+                      </p>
+                      <p className={`text-xs font-semibold sm:text-right ${
+                        balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-gray-500'
+                      }`}>
+                        <span className="sm:hidden text-[10px] text-gray-400 mr-1">Balance:</span>
+                        {balance > 0 ? `+₱${balance.toFixed(2)}` : balance < 0 ? `-₱${Math.abs(balance).toFixed(2)}` : '₱0.00'}
+                      </p>
                     </div>
                   );
                 })}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Invitation Code */}
-        <div className="bg-gray-50 rounded-lg p-4">
-          <label className="text-sm font-semibold text-gray-600 block mb-2">Invitation Code</label>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded font-mono text-sm text-gray-900">
-              {bill.invitationCode}
-            </code>
-            <button
-              onClick={() => copyCode(bill.invitationCode)}
-              className="p-2 hover:bg-gray-200 rounded transition-colors"
-              title="Copy invitation code"
-            >
-              {copiedCode ? (
-                <Check size={18} className="text-green-600" />
-              ) : (
-                <Copy size={18} className="text-gray-600" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Members List */}
-        {bill.members?.length > 0 && (
-          <div>
-            <label className="text-sm font-semibold text-gray-600 block mb-3">Members</label>
-            <div className="space-y-2">
-              {bill.members.map((member) => (
-                <div key={member._id} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold">
-                      {member.firstName?.charAt(0)}{member.lastName?.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {member.firstName} {member.lastName}
-                      </p>
-                      <p className="text-xs text-gray-500">{member.email}</p>
-                    </div>
-                  </div>
-                  {bill.createdBy?.toString?.() === member._id?.toString?.() || bill.createdBy === member._id ? (
-                    <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                      Owner
-                    </span>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Expenses */}
+        {/* ─── Expenses ─── */}
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <label className="text-sm font-semibold text-gray-600">Expenses</label>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <ClipboardList size={16} className="text-gray-500" />
+              <p className="text-sm font-semibold text-gray-700">Expenses ({bill.expenses?.length || 0})</p>
+            </div>
             <Button
               variant="primary"
               size="sm"
@@ -318,41 +341,134 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
                 setExpenseForm((prev) => ({ ...prev, paidBy: getDefaultPaidBy() }));
                 setShowAddExpense(true);
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-1.5"
             >
-              <Plus size={16} />
+              <Plus size={14} />
               Add Expense
             </Button>
           </div>
           {bill.expenses?.length > 0 ? (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {bill.expenses.map((expense) => (
-                <div key={expense._id} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{expense.description}</p>
-                    <p className="text-xs text-gray-600">
-                      Paid by{' '}
-                      {expense.paidBy?.firstName} {expense.paidBy?.lastName}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm font-semibold text-gray-900">${(expense.amount || 0).toFixed(2)}</p>
-                    <button
-                      onClick={() => handleDeleteExpense(expense._id)}
-                      className="p-2 hover:bg-red-100 rounded transition-colors text-red-600"
-                      title="Delete expense"
+            <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100 max-h-72 overflow-y-auto">
+              {bill.expenses.map((expense) => {
+                const paidByName =
+                  expense.paidByName ||
+                  bill.members?.find((m) => m._id === expense.paidBy)?.name ||
+                  'Unknown';
+                const isExpanded = expandedExpense === expense._id;
+                const splitDetails = getExpenseSplitDetails(expense);
+                const isCustomSplit = expense.splitType === 'custom';
+                const expPaidById = expense.paidBy?.toString?.() || expense.paidBy;
+                const isPersonalExpense = isCustomSplit && Array.isArray(expense.splitAmong) && expense.splitAmong.length === 1 && (expense.splitAmong[0]?.toString?.() || expense.splitAmong[0]) === expPaidById;
+                return (
+                  <div key={expense._id} className="group">
+                    <div
+                      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => setExpandedExpense(isExpanded ? null : expense._id)}
                     >
-                      <Trash2 size={16} />
-                    </button>
+                      <div className="p-1.5 bg-gray-100 rounded-lg group-hover:bg-gray-200 transition-colors flex-shrink-0">
+                        <Receipt size={14} className="text-gray-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{expense.description}</p>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                          <p className="text-[10px] text-gray-500">Paid by {paidByName}</p>
+                          <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${isPersonalExpense ? 'bg-gray-100 text-gray-600' : isCustomSplit ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {isPersonalExpense ? 'Personal' : isCustomSplit ? 'Custom' : 'Equal'}
+                          </span>
+                          {expense.createdAt && (
+                            <span className="text-[10px] text-gray-400">
+                              {new Date(expense.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm font-bold text-gray-900 flex-shrink-0">₱{(expense.amount || 0).toFixed(2)}</p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteExpense(expense._id); }}
+                        className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100"
+                        title="Delete expense"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                      <div className="text-gray-400 flex-shrink-0">
+                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="px-4 pb-3">
+                        <div className="ml-8 bg-gray-50 rounded-lg border border-gray-100 divide-y divide-gray-100">
+                          <div className="grid grid-cols-2 px-3 py-1.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wide">
+                            <span>Member</span>
+                            <span className="text-right">Share</span>
+                          </div>
+                          {splitDetails.map((s) => (
+                            <div key={s._id} className="grid grid-cols-2 px-3 py-2">
+                              <p className="text-xs text-gray-700">{s.name}</p>
+                              <p className="text-xs font-medium text-gray-900 text-right">₱{s.share.toFixed(2)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
-            <div className="text-center py-6 bg-gray-50 rounded-lg">
+            <div className="text-center py-6 bg-gray-50 rounded-xl border border-gray-200">
               <p className="text-sm text-gray-500">No expenses yet</p>
             </div>
           )}
+        </div>
+
+        {/* ─── Settlement ─── */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Handshake size={16} className="text-gray-500" />
+            <p className="text-sm font-semibold text-gray-700">Settlement</p>
+          </div>
+          {bill.split?.settlements && bill.split.settlements.length > 0 ? (
+            <div className="space-y-2">
+              {bill.split.settlements.map((s, idx) => (
+                <div
+                  key={`${s.from}-${s.to}-${idx}`}
+                  className="flex items-center gap-2 p-3 rounded-xl bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-100"
+                >
+                  <div className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-[10px] font-bold flex-shrink-0">
+                    {s.fromName?.charAt(0)?.toUpperCase() || '?'}
+                  </div>
+                  <span className="text-xs font-medium text-gray-900 truncate">{s.fromName}</span>
+                  <ArrowRight size={14} className="text-cyan-600 flex-shrink-0" />
+                  <span className="text-xs font-medium text-gray-900 truncate">{s.toName}</span>
+                  <span className="ml-auto text-sm font-bold text-cyan-700 flex-shrink-0">₱{s.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (bill.expenses?.length || 0) > 0 ? (
+            <div className="text-center py-4 bg-green-50 rounded-xl border border-green-200">
+              <Check size={20} className="mx-auto text-green-600 mb-1" />
+              <p className="text-sm font-medium text-green-700">All settled up!</p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 text-center py-3">Add expenses to see settlements.</p>
+          )}
+        </div>
+
+        {/* ─── Invite Code ─── */}
+        <div className="bg-gray-50 rounded-xl p-4">
+          <p className="text-xs font-semibold text-gray-500 mb-2">Invite Code</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg font-mono text-sm font-semibold text-gray-900 tracking-widest">
+              {bill.invitationCode}
+            </code>
+            <button
+              onClick={() => copyCode(bill.invitationCode)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#06B6D4] text-white text-xs font-medium hover:bg-[#0891b2] transition-colors"
+            >
+              {copiedCode ? <Check size={14} /> : <Copy size={14} />}
+              {copiedCode ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
@@ -421,7 +537,7 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
             With
           </label>
           <select
-            value={canUseCustomSplit ? expenseForm.splitType : 'equally'}
+            value={expenseForm.splitType}
             onChange={(e) => {
               const v = e.target.value;
               setExpenseForm((prev) => ({
@@ -431,13 +547,17 @@ export default function BillViewModal({ isOpen, onClose, billId }) {
               }));
             }}
             className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
-            disabled={addingExpense || !canUseCustomSplit}
+            disabled={addingExpense}
           >
             <option value="equally">Equally divided</option>
+            <option value="personal">Only me (Personal)</option>
             <option value="custom" disabled={!canUseCustomSplit}>
-              Custom {!canUseCustomSplit && '(need more than 2 persons)'}
+              Custom {!canUseCustomSplit && '(need at least 2 persons)'}
             </option>
           </select>
+          {expenseForm.splitType === 'personal' && (
+            <p className="mt-1 text-xs text-gray-500">This expense won't affect settlements — only the payer is responsible.</p>
+          )}
           {expenseForm.splitType === 'custom' && canUseCustomSplit && bill?.members?.length > 0 && (
             <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-sm font-medium text-gray-700 mb-2">

@@ -27,7 +27,7 @@ export default function Register() {
   });
 
   const [errors, setErrors] = useState({});
-  const [touched, setTouched] = useState({});
+  const [submitted, setSubmitted] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -156,7 +156,7 @@ export default function Register() {
       [name]: value,
     }));
 
-    if (touched[name]) {
+    if (submitted) {
       validateField(name, value);
     }
   };
@@ -207,11 +207,6 @@ export default function Register() {
 
   const handleBlur = (e) => {
     const { name, value } = e.target;
-    setTouched((prev) => ({
-      ...prev,
-      [name]: true,
-    }));
-    validateField(name, value);
     if (name === 'username') checkUsernameUnique(value);
     if (name === 'nickname') checkNicknameUnique(value);
   };
@@ -219,9 +214,8 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Mark all fields touched and validate
-    const allTouched = Object.fromEntries(Object.keys(formData).map((k) => [k, true]));
-    setTouched(allTouched);
+    // Mark as submitted to show validation
+    setSubmitted(true);
     Object.keys(formData).forEach((key) => validateField(key, formData[key]));
 
     // Build fresh errors to avoid stale state
@@ -426,17 +420,16 @@ export default function Register() {
                   name="lastName"
                   value={formData.lastName}
                   onChange={handleChange}
-                  onBlur={handleBlur}
                   className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                    touched.lastName && errors.lastName
+                    submitted && errors.lastName
                       ? 'border-red-500 focus:ring-red-300'
-                      : touched.lastName
+                      : submitted && !errors.lastName
                       ? 'border-green-500 focus:ring-green-300'
                       : 'border-gray-300 focus:ring-[#06B6D4]'
                   }`}
                   placeholder="Last Name *"
                 />
-                {touched.lastName && errors.lastName && (
+                {submitted && errors.lastName && (
                   <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                     <AlertCircle size={12} /> {errors.lastName}
                   </div>
@@ -449,17 +442,16 @@ export default function Register() {
                   name="firstName"
                   value={formData.firstName}
                   onChange={handleChange}
-                  onBlur={handleBlur}
                   className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                    touched.firstName && errors.firstName
+                    submitted && errors.firstName
                       ? 'border-red-500 focus:ring-red-300'
-                      : touched.firstName
+                      : submitted && !errors.firstName
                       ? 'border-green-500 focus:ring-green-300'
                       : 'border-gray-300 focus:ring-[#06B6D4]'
                   }`}
                   placeholder="First Name *"
                 />
-                {touched.firstName && errors.firstName && (
+                {submitted && errors.firstName && (
                   <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                     <AlertCircle size={12} /> {errors.firstName}
                   </div>
@@ -476,9 +468,9 @@ export default function Register() {
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm pr-10 ${
-                  touched.nickname && errors.nickname
+                  submitted && errors.nickname
                     ? 'border-red-500 focus:ring-red-300'
-                    : touched.nickname
+                    : submitted && !errors.nickname
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
@@ -489,7 +481,7 @@ export default function Register() {
                   <Loader2 size={18} className="animate-spin" />
                 </div>
               )}
-              {touched.nickname && errors.nickname && (
+              {submitted && errors.nickname && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.nickname}
                 </div>
@@ -503,17 +495,16 @@ export default function Register() {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                onBlur={handleBlur}
                 className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                  touched.email && errors.email
+                  submitted && errors.email
                     ? 'border-red-500 focus:ring-red-300'
-                    : touched.email
+                    : submitted && !errors.email
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
                 placeholder="Email *"
               />
-              {touched.email && errors.email && (
+              {submitted && errors.email && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.email}
                 </div>
@@ -529,9 +520,9 @@ export default function Register() {
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm pr-10 ${
-                  touched.username && errors.username
+                  submitted && errors.username
                     ? 'border-red-500 focus:ring-red-300'
-                    : touched.username
+                    : submitted && !errors.username
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
@@ -542,7 +533,7 @@ export default function Register() {
                   <Loader2 size={18} className="animate-spin" />
                 </div>
               )}
-              {touched.username && errors.username && (
+              {submitted && errors.username && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.username}
                 </div>
@@ -556,11 +547,10 @@ export default function Register() {
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
-                onBlur={handleBlur}
                 className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                  touched.password && errors.password
+                  submitted && errors.password
                     ? 'border-red-500 focus:ring-red-300'
-                    : touched.password
+                    : submitted && !errors.password
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
@@ -620,7 +610,7 @@ export default function Register() {
                 </div>
               )}
 
-              {touched.password && errors.password && (
+              {submitted && errors.password && (
                 <div className="flex items-center gap-1 mt-2 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.password}
                 </div>
@@ -634,17 +624,16 @@ export default function Register() {
                 name="confirmPassword"
                 value={formData.confirmPassword}
                 onChange={handleChange}
-                onBlur={handleBlur}
                 className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                  touched.confirmPassword && errors.confirmPassword
+                  submitted && errors.confirmPassword
                     ? 'border-red-500 focus:ring-red-300'
-                    : touched.confirmPassword
+                    : submitted && !errors.confirmPassword
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
                 placeholder="Confirm Password"
               />
-              {touched.confirmPassword && errors.confirmPassword && (
+              {submitted && errors.confirmPassword && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.confirmPassword}
                 </div>

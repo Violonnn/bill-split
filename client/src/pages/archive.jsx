@@ -107,7 +107,7 @@ export default function Archive() {
                 <div>
                   <p className="text-sm text-gray-600">Total Amount</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    ${(bill.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0).toFixed(2)}
+                    ₱{(bill.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0).toFixed(2)}
                   </p>
                 </div>
                 <div>

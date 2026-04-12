@@ -10,7 +10,7 @@ export default function MainLayout({ children, title }) {
   const [isProfileSidebarOpen, setIsProfileSidebarOpen] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [amount, setAmount] = useState({ amountCents: 499, amountFormatted: '$4.99' });
+  const [amount, setAmount] = useState({ amountCents: 499, amountFormatted: '₱4.99' });
 
   useEffect(() => {
     // Disable overscroll bounce on iOS
@@ -26,8 +26,8 @@ export default function MainLayout({ children, title }) {
   useEffect(() => {
     if (isUpgradeModalOpen || isPaymentModalOpen) {
       apiRequest('/api/auth/premium-upgrade-info')
-        .then((data) => setAmount({ amountCents: data.amountCents, amountFormatted: data.amountFormatted || `$${(data.amountCents / 100).toFixed(2)}` }))
-        .catch(() => setAmount({ amountCents: 499, amountFormatted: '$4.99' }));
+        .then((data) => setAmount({ amountCents: data.amountCents, amountFormatted: data.amountFormatted || `₱${(data.amountCents / 100).toFixed(2)}` }))
+        .catch(() => setAmount({ amountCents: 499, amountFormatted: '₱4.99' }));
     }
   }, [isUpgradeModalOpen, isPaymentModalOpen]);
 

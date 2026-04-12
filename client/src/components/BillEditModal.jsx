@@ -4,7 +4,7 @@ import Modal from './Modal';
 import LoadingSpinner from './LoadingSpinner';
 import Alert from './Alert';
 import { Button } from './Button';
-import { Plus, Trash2, UserPlus, Search, Check, Copy } from 'lucide-react';
+import { Plus, Trash2, UserPlus, Search, Check, Copy, Receipt, Pencil, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function BillEditModal({ isOpen, onClose, billId }) {
   const [bill, setBill] = useState(null);
@@ -27,6 +27,10 @@ export default function BillEditModal({ isOpen, onClose, billId }) {
   const [removingMember, setRemovingMember] = useState(null);
   const [regeneratingCode, setRegeneratingCode] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
+  const [editExpenseForm, setEditExpenseForm] = useState({ description: '', amount: '', paidBy: '', splitType: 'equally', splitAmong: [] });
+  const [savingExpense, setSavingExpense] = useState(false);
+  const [deletingExpenseId, setDeletingExpenseId] = useState(null);
 
   useEffect(() => {
     if (!isOpen || !billId) return;
@@ -227,6 +231,84 @@ export default function BillEditModal({ isOpen, onClose, billId }) {
     }
   };
 
+  const canUseCustomSplit = (bill?.members?.length || 0) >= 2;
+
+  const startEditExpense = (expense) => {
+    const paidById = expense.paidBy?._id?.toString?.() || expense.paidBy?.toString?.() || expense.paidBy;
+    const splitAmongIds = Array.isArray(expense.splitAmong) ? expense.splitAmong.map((id) => id?.toString?.() || id) : [];
+    const isPersonal = expense.splitType === 'custom' && splitAmongIds.length === 1 && splitAmongIds[0] === paidById;
+    setEditingExpenseId(expense._id);
+    setEditExpenseForm({
+      description: expense.description || '',
+      amount: expense.amount?.toString() || '',
+      paidBy: paidById,
+      splitType: isPersonal ? 'personal' : (expense.splitType || 'equally'),
+      splitAmong: splitAmongIds,
+    });
+  };
+
+  const handleSaveExpense = async (expenseId) => {
+    setError('');
+    const amountNum = parseFloat(editExpenseForm.amount);
+    if (!editExpenseForm.description.trim()) {
+      setError('Expense name is required');
+      return;
+    }
+    if (Number.isNaN(amountNum) || amountNum <= 0) {
+      setError('Please enter a valid amount greater than 0.');
+      return;
+    }
+    const isPersonal = editExpenseForm.splitType === 'personal';
+    const isCustom = editExpenseForm.splitType === 'custom' && canUseCustomSplit;
+    if (isCustom && (!editExpenseForm.splitAmong || editExpenseForm.splitAmong.length === 0)) {
+      setError('Select at least one person to split among.');
+      return;
+    }
+
+    setSavingExpense(true);
+    try {
+      const body = {
+        description: editExpenseForm.description.trim(),
+        amount: amountNum,
+        paidBy: editExpenseForm.paidBy,
+        splitType: isPersonal ? 'custom' : editExpenseForm.splitType,
+      };
+      if (isPersonal) {
+        body.splitAmong = [editExpenseForm.paidBy];
+      } else if (isCustom && editExpenseForm.splitAmong?.length) {
+        body.splitAmong = editExpenseForm.splitAmong;
+      }
+      await apiRequest(`/api/bills/${billId}/expenses/${expenseId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      const { bill: updatedBill } = await apiRequest(`/api/bills/${encodeURIComponent(billId)}`);
+      if (updatedBill) setBill(updatedBill);
+      setEditingExpenseId(null);
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Failed to update expense');
+    } finally {
+      setSavingExpense(false);
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId) => {
+    setDeletingExpenseId(expenseId);
+    try {
+      await apiRequest(`/api/bills/${billId}/expenses/${expenseId}`, {
+        method: 'DELETE',
+      });
+      const { bill: updatedBill } = await apiRequest(`/api/bills/${encodeURIComponent(billId)}`);
+      if (updatedBill) setBill(updatedBill);
+      if (editingExpenseId === expenseId) setEditingExpenseId(null);
+    } catch (err) {
+      setError(err.message || 'Failed to delete expense');
+    } finally {
+      setDeletingExpenseId(null);
+    }
+  };
+
   if (!bill && loading) {
     return (
       <Modal isOpen={isOpen} onClose={onClose} title="Edit Bill" size="xl">
@@ -362,7 +444,7 @@ export default function BillEditModal({ isOpen, onClose, billId }) {
               </Button>
             </div>
             {searchError && (
-              <div className="mt-2 text-red-600 text-sm">{searchError}</div>
+              <div className="mt-2 text-red-600 text-xs">{searchError}</div>
             )}
             {searchResults.length > 0 && (
               <ul className="mt-3 space-y-2">
@@ -421,6 +503,192 @@ export default function BillEditModal({ isOpen, onClose, billId }) {
             </div>
           ) : (
             <p className="text-sm text-gray-500">No members yet</p>
+          )}
+        </div>
+
+        {/* ─── Expenses Section ─── */}
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <Receipt size={20} className="text-gray-600" />
+            <h3 className="text-lg font-bold text-gray-900">Expenses ({bill.expenses?.length || 0})</h3>
+          </div>
+
+          {bill.expenses?.length > 0 ? (
+            <div className="space-y-2">
+              {bill.expenses.map((expense) => {
+                const isEditing = editingExpenseId === expense._id;
+                const paidByName =
+                  expense.paidByName ||
+                  bill.members?.find((m) => (m._id?.toString?.() || m._id) === (expense.paidBy?.toString?.() || expense.paidBy))?.name ||
+                  'Unknown';
+                const paidById = expense.paidBy?.toString?.() || expense.paidBy;
+                const splitAmongIds = Array.isArray(expense.splitAmong) ? expense.splitAmong.map((id) => id?.toString?.() || id) : [];
+                const isCustomSplit = expense.splitType === 'custom';
+                const isPersonalExpense = isCustomSplit && splitAmongIds.length === 1 && splitAmongIds[0] === paidById;
+
+                return (
+                  <div key={expense._id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    {isEditing ? (
+                      /* ── Inline Edit Form ── */
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Expense Name</label>
+                          <input
+                            type="text"
+                            value={editExpenseForm.description}
+                            onChange={(e) => setEditExpenseForm((prev) => ({ ...prev, description: e.target.value }))}
+                            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+                            disabled={savingExpense}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Amount</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editExpenseForm.amount}
+                              onChange={(e) => setEditExpenseForm((prev) => ({ ...prev, amount: e.target.value }))}
+                              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+                              disabled={savingExpense}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Paid By</label>
+                            <select
+                              value={editExpenseForm.paidBy}
+                              onChange={(e) => setEditExpenseForm((prev) => ({ ...prev, paidBy: e.target.value }))}
+                              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+                              disabled={savingExpense}
+                            >
+                              <option value="">Select who paid</option>
+                              {bill.members?.map((member) => {
+                                const mid = member._id?.toString?.() ?? member._id;
+                                const hostId = bill?.createdBy?.toString?.() ?? bill?.createdBy;
+                                const isHost = hostId && mid === hostId;
+                                return (
+                                  <option key={mid} value={mid}>
+                                    {member.name} {isHost ? '(Host)' : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">With</label>
+                          <select
+                            value={editExpenseForm.splitType}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditExpenseForm((prev) => ({
+                                ...prev,
+                                splitType: v,
+                                splitAmong: v === 'custom' && bill?.members?.length ? bill.members.map((m) => m._id?.toString?.() ?? m._id) : [],
+                              }));
+                            }}
+                            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#06B6D4]"
+                            disabled={savingExpense}
+                          >
+                            <option value="equally">Equally divided</option>
+                            <option value="personal">Only me (Personal)</option>
+                            <option value="custom" disabled={!canUseCustomSplit}>
+                              Custom {!canUseCustomSplit && '(need at least 2 persons)'}
+                            </option>
+                          </select>
+                          {editExpenseForm.splitType === 'personal' && (
+                            <p className="mt-1 text-xs text-gray-500">This expense won't affect settlements — only the payer is responsible.</p>
+                          )}
+                          {editExpenseForm.splitType === 'custom' && canUseCustomSplit && bill?.members?.length > 0 && (
+                            <div className="mt-2 p-2 bg-white rounded-lg border border-gray-200">
+                              <p className="text-xs font-medium text-gray-600 mb-1.5">Split among:</p>
+                              <div className="space-y-1.5">
+                                {bill.members.map((member) => {
+                                  const mid = member._id?.toString?.() ?? member._id;
+                                  const checked = (editExpenseForm.splitAmong || []).includes(mid);
+                                  return (
+                                    <label key={mid} className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          setEditExpenseForm((prev) => {
+                                            const current = prev.splitAmong || [];
+                                            const next = checked ? current.filter((id) => id !== mid) : [...current, mid];
+                                            return { ...prev, splitAmong: next };
+                                          });
+                                        }}
+                                        className="rounded border-gray-300 text-[#06B6D4] focus:ring-[#06B6D4]"
+                                        disabled={savingExpense}
+                                      />
+                                      <span className="text-xs text-gray-900">{member.name}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 justify-end pt-2 border-t border-gray-200">
+                          <button
+                            type="button"
+                            onClick={() => setEditingExpenseId(null)}
+                            className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                            disabled={savingExpense}
+                          >
+                            Cancel
+                          </button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleSaveExpense(expense._id)}
+                            disabled={savingExpense}
+                          >
+                            {savingExpense ? 'Saving...' : 'Save'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ── Read-only Row ── */
+                      <div className="flex items-center gap-3">
+                        <div className="p-1.5 bg-gray-200 rounded-lg flex-shrink-0">
+                          <Receipt size={14} className="text-gray-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{expense.description}</p>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                            <p className="text-[10px] text-gray-500">Paid by {paidByName}</p>
+                            <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${isPersonalExpense ? 'bg-gray-200 text-gray-600' : isCustomSplit ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {isPersonalExpense ? 'Personal' : isCustomSplit ? 'Custom' : 'Equal'}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-sm font-bold text-gray-900 flex-shrink-0">₱{(expense.amount || 0).toFixed(2)}</p>
+                        <button
+                          type="button"
+                          onClick={() => startEditExpense(expense)}
+                          className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-gray-400 hover:text-blue-600"
+                          title="Edit expense"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteExpense(expense._id)}
+                          disabled={deletingExpenseId === expense._id}
+                          className="p-1.5 hover:bg-red-100 rounded-lg transition-colors text-gray-400 hover:text-red-600"
+                          title="Delete expense"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No expenses yet</p>
           )}
         </div>
       </div>

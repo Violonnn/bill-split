@@ -64,12 +64,14 @@ router.post('/join', async (req, res) => {
           error: 'This email is already registered. Please log in instead.',
         });
       }
-      // Existing guest: refresh 6hr window and current invitation
+      // Existing guest: refresh 6hr window, current invitation, and name
       user.dailyAccessStart = user.dailyAccessStart && (Date.now() - user.dailyAccessStart.getTime() < 6 * 60 * 60 * 1000)
         ? user.dailyAccessStart
         : new Date();
       user.invitationCode = inviteCode;
       user.invitedBy = bill.createdBy;
+      user.firstName = firstName.trim();
+      user.lastName = lastName.trim();
       await user.save();
     } else {
       // Double-check no guest exists for this email (e.g. race or timing)
@@ -84,6 +86,8 @@ router.post('/join', async (req, res) => {
         user.dailyAccessStart = new Date();
         user.invitationCode = inviteCode;
         user.invitedBy = bill.createdBy;
+        user.firstName = firstName.trim();
+        user.lastName = lastName.trim();
         await user.save();
       } else {
         user = new User({
@@ -109,6 +113,8 @@ router.post('/join', async (req, res) => {
             user.dailyAccessStart = new Date();
             user.invitationCode = inviteCode;
             user.invitedBy = bill.createdBy;
+            user.firstName = firstName.trim();
+            user.lastName = lastName.trim();
             await user.save();
           } else {
             throw saveErr;

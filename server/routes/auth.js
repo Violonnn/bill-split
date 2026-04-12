@@ -458,6 +458,12 @@ router.post('/reset-password', async (req, res) => {
     user.password = password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
+    // User proved email ownership by clicking the reset link
+    if (!user.emailVerified) {
+      user.emailVerified = true;
+      user.emailVerifyToken = undefined;
+      user.emailVerifyExpires = undefined;
+    }
     await user.save();
 
     res.json({ message: 'Password reset successful. You can now log in.' });

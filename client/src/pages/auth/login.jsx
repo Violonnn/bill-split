@@ -15,7 +15,7 @@ export default function Login() {
   });
 
   const [errors, setErrors] = useState({});
-  const [touched, setTouched] = useState({});
+  const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
@@ -24,6 +24,30 @@ export default function Login() {
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState('');
   const [resendError, setResendError] = useState('');
+
+  // Show resend confirmation panel when email is not verified or user was redirected after registration
+  const showResendConfirmation = !!(emailNotVerifiedMessage || location.state?.checkEmail);
+
+  const handleResendConfirmation = async () => {
+    if (!resendEmailOrUsername.trim()) {
+      setResendError('Enter your email or username');
+      return;
+    }
+    setResending(true);
+    setResendError('');
+    setResendSuccess('');
+    try {
+      await apiRequest('/api/auth/resend-confirmation', {
+        method: 'POST',
+        body: JSON.stringify({ emailOrUsername: resendEmailOrUsername.trim() }),
+      });
+      setResendSuccess('Confirmation email re-sent. Check your inbox.');
+    } catch (err) {
+      setResendError(err.message || 'Failed to resend confirmation email.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   useEffect(() => {
     if (searchParams.get('verified') === '1') {
@@ -79,55 +103,10 @@ export default function Login() {
       [name]: value,
     }));
 
-    if (touched[name]) {
+    if (submitted) {
       validateField(name, value);
     }
   };
-
-  const handleBlur = (e) => {
-    const { name, value } = e.target;
-    setTouched((prev) => ({
-      ...prev,
-      [name]: true,
-    }));
-    validateField(name, value);
-  };
-<<<<<<< HEAD
-
-  // Only show resend block when: (1) just redirected from sign up, or (2) user tried to login with unconfirmed account. Resets on refresh (state/state cleared).
-  const showResendConfirmation =
-    !!location.state?.checkEmail || !!emailNotVerifiedMessage;
-
-  const handleResendConfirmation = async (e) => {
-    e.preventDefault();
-    const value = (resendEmailOrUsername || formData.username || '').trim();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    setResendError('');
-    setResendSuccess('');
-    if (!value) {
-      setResendError('Enter your email or username to resend the confirmation email.');
-      return;
-    }
-    if (value.includes('@') && !emailRegex.test(value)) {
-      setResendError('Please enter a valid email address.');
-      return;
-    }
-    setResending(true);
-    try {
-      const data = await apiRequest('/api/auth/resend-confirmation', {
-        method: 'POST',
-        body: JSON.stringify({ emailOrUsername: value }),
-      });
-      setResendSuccess(data.message || 'A new confirmation email has been sent. Check your inbox.');
-    } catch (err) {
-      setResendError(err.data?.error || err.message || 'Failed to resend. Please try again.');
-    } finally {
-      setResending(false);
-    }
-  };
-
-=======
->>>>>>> debug
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -136,7 +115,7 @@ export default function Login() {
     if (!formData.username?.trim()) freshErrors.username = 'Username or email is required';
     if (!formData.password) freshErrors.password = 'Password is required';
 
-    setTouched({ username: true, password: true });
+    setSubmitted(true);
     setErrors(freshErrors);
 
     if (Object.keys(freshErrors).length > 0) return;
@@ -173,10 +152,6 @@ export default function Login() {
         setResendEmailOrUsername((prev) => prev || formData.username);
       } else {
         setSubmitError('');
-<<<<<<< HEAD
-        setEmailNotVerifiedMessage('');
-        setErrors({ username: err.message || 'Incorrect username or password' });
-=======
         if (err.data?.code === 'EMAIL_NOT_VERIFIED') {
           setErrors({ username: err.data.error });
         } else if (err.data?.code === 'USERNAME_NOT_FOUND') {
@@ -186,7 +161,6 @@ export default function Login() {
         } else {
           setErrors({ username: err.message || 'Username or Email not found or password incorrect' });
         }
->>>>>>> debug
       }
     } finally {
       setSubmitting(false);
@@ -243,17 +217,16 @@ export default function Login() {
                 name="username"
                 value={formData.username}
                 onChange={handleChange}
-                onBlur={handleBlur}
                 className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                  touched.username && errors.username
+                  submitted && errors.username
                     ? 'border-red-500 focus:ring-red-300'
-                    : touched.username
+                    : submitted && !errors.username
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
                 placeholder="Username or Email"
               />
-              {touched.username && errors.username && (
+              {submitted && errors.username && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.username}
                 </div>
@@ -267,17 +240,16 @@ export default function Login() {
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
-                onBlur={handleBlur}
                 className={`w-full px-4 py-2.5 rounded-lg border-2 transition focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
-                  touched.password && errors.password
+                  submitted && errors.password
                     ? 'border-red-500 focus:ring-red-300'
-                    : touched.password
+                    : submitted && !errors.password
                     ? 'border-green-500 focus:ring-green-300'
                     : 'border-gray-300 focus:ring-[#06B6D4]'
                 }`}
                 placeholder="Password"
               />
-              {touched.password && errors.password && (
+              {submitted && errors.password && (
                 <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
                   <AlertCircle size={12} /> {errors.password}
                 </div>
@@ -373,9 +345,9 @@ export default function Login() {
                     : 'bg-[#0E7490] hover:bg-[#06B6D4] shadow-lg hover:shadow-2xl cursor-pointer transform hover:scale-105 active:scale-95'
                 }`}
               >
-                {submitting ? 'Signing In...' : 'Sign In'}
+                  {submitting ? 'Signing In...' : 'Sign In'}
               </button>
-            </div>
+             </div>
 
             {/* Sign Up Link */}
             <div className="text-center mt-4">

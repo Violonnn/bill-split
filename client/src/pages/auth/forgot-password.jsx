@@ -88,20 +88,23 @@ export default function ForgotPassword() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <div className="flex items-center gap-1 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
-                  <AlertCircle size={16} /> {error}
-                </div>
-              )}
-
               <div>
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); setError(''); }}
                   placeholder="Enter your email"
-                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
+                  className={`w-full px-4 py-2.5 rounded-lg border-2 focus:outline-none focus:ring-2 focus:ring-offset-0 text-sm ${
+                    error
+                      ? 'border-red-500 focus:ring-red-300'
+                      : 'border-gray-300 focus:ring-[#06B6D4]'
+                  }`}
                 />
+                {error && (
+                  <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                    <AlertCircle size={12} /> {error}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-center mt-6">

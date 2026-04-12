@@ -17,7 +17,7 @@ import { Crown, CreditCard, Zap, Users, FileText } from 'lucide-react';
 export default function Upgrade() {
   const navigate = useNavigate();
   const { user, updateUser, loading: authLoading } = useAuth();
-  const [amount, setAmount] = useState({ amountCents: 499, amountFormatted: '$4.99' });
+  const [amount, setAmount] = useState({ amountCents: 499, amountFormatted: '₱4.99' });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState('');
@@ -32,8 +32,8 @@ export default function Upgrade() {
 
   useEffect(() => {
     apiRequest('/api/auth/premium-upgrade-info')
-      .then((data) => setAmount({ amountCents: data.amountCents, amountFormatted: data.amountFormatted || `$${(data.amountCents / 100).toFixed(2)}` }))
-      .catch(() => setAmount({ amountCents: 499, amountFormatted: '$4.99' }));
+      .then((data) => setAmount({ amountCents: data.amountCents, amountFormatted: data.amountFormatted || `₱${(data.amountCents / 100).toFixed(2)}` }))
+      .catch(() => setAmount({ amountCents: 499, amountFormatted: '₱4.99' }));
   }, []);
 
   useEffect(() => {

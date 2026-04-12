@@ -833,6 +833,76 @@ router.post('/:id/expenses', authenticate, async (req, res) => {
 });
 
 /**
+ * PATCH /api/bills/:id/expenses/:expenseId
+ * Update an expense. Any participant with access can edit.
+ */
+router.patch('/:id/expenses/:expenseId', authenticate, async (req, res) => {
+  try {
+    const bill = await Bill.findById(req.params.id);
+    if (!bill) {
+      return res.status(404).json({ error: 'Bill not found' });
+    }
+    if (!canAccessBill(bill, req.user)) {
+      return res.status(403).json({ error: 'You do not have access to this bill.' });
+    }
+
+    const expense = (bill.expenses || []).find(
+      (e) => e._id.toString() === req.params.expenseId
+    );
+    if (!expense) {
+      return res.status(404).json({ error: 'Expense not found' });
+    }
+
+    const { description, amount, paidBy, splitType, splitAmong } = req.body || {};
+    const participantIds = (bill.participants || []).map((p) => p.user?.toString?.()).filter(Boolean);
+
+    if (description !== undefined) {
+      if (typeof description !== 'string' || !description.trim()) {
+        return res.status(400).json({ error: 'Expense name is required' });
+      }
+      expense.description = description.trim();
+    }
+    if (amount !== undefined) {
+      const numAmount = parseFloat(amount);
+      if (Number.isNaN(numAmount) || numAmount < 0) {
+        return res.status(400).json({ error: 'Amount must be a positive number' });
+      }
+      expense.amount = numAmount;
+    }
+    if (paidBy !== undefined) {
+      if (!participantIds.includes(paidBy.toString())) {
+        return res.status(400).json({ error: 'Paid by must be one of the bill participants' });
+      }
+      expense.paidBy = paidBy;
+    }
+    if (splitType !== undefined) {
+      const st = splitType === 'custom' ? 'custom' : 'equally';
+      expense.splitType = st;
+      if (st === 'custom') {
+        let splitAmongIds = Array.isArray(splitAmong) ? splitAmong.map((id) => id.toString()) : [];
+        if (splitAmongIds.length > 0) {
+          const valid = splitAmongIds.every((id) => participantIds.includes(id));
+          if (!valid) {
+            return res.status(400).json({ error: 'Custom split must only include bill participants' });
+          }
+          expense.splitAmong = splitAmongIds;
+        } else {
+          expense.splitAmong = [...participantIds];
+        }
+      } else {
+        expense.splitAmong = [];
+      }
+    }
+
+    await bill.save();
+    res.json({ message: 'Expense updated.' });
+  } catch (err) {
+    console.error('Update expense error:', err);
+    res.status(500).json({ error: 'Failed to update expense.' });
+  }
+});
+
+/**
  * DELETE /api/bills/:id/expenses/:expenseId
  * Remove an expense from the bill. Any participant with access can delete.
  */
