@@ -254,6 +254,16 @@ router.post('/rejoin', async (req, res) => {
     }
 
     const user = await User.findOne({ email: emailNorm });
+    
+    // If email belongs to a registered user (not guest), redirect to login
+    if (user && user.userType !== USER_TYPES.GUEST) {
+      return res.status(400).json({ 
+        error: 'This email is already registered. Please log in instead.',
+        isRegisteredUser: true 
+      });
+    }
+
+    // If not found or not a guest, show form to join
     if (!user || user.userType !== USER_TYPES.GUEST) {
       return res.status(404).json({ error: 'No guest account found for this email. Enter your details below to join.' });
     }
