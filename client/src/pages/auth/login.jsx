@@ -68,6 +68,18 @@ export default function Login() {
     }
   }, [location.state?.checkEmail, location.state?.email]);
 
+  // Handle redirect from guest-join when email is registered
+  useEffect(() => {
+    if (location.state?.email && location.state?.message) {
+      setFormData((prev) => ({
+        ...prev,
+        username: location.state.email,
+      }));
+      setSuccessMessage(location.state.message);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state?.email, location.state?.message, location.pathname, navigate]);
+
   // Validation rules
   const validateField = (name, value) => {
     const newErrors = { ...errors };

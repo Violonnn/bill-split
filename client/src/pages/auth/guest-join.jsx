@@ -67,6 +67,7 @@ export default function GuestJoin() {
   };
 
   // Returning guest: email only → rejoin. If not found, show full form.
+  // If registered user, redirect to login.
   const handleRejoinWithEmail = async (e) => {
     e.preventDefault();
     const emailErr = validateEmail(emailOnly);
@@ -88,9 +89,12 @@ export default function GuestJoin() {
       login(userData, token);
       navigate(billId ? `/bill/${billId}` : '/', { state: { guestWelcomeBack: message } });
     } catch (err) {
-      setErrors({ emailOnly: err.message || 'No guest found for this email.' });
-      setFormData((prev) => ({ ...prev, email: emailOnly.trim().toLowerCase() }));
-      setStep('form');
+      // If email is registered, redirect to login
+      if (err.data?.isRegisteredUser) {
+        navigate('/login', { state: { email: emailOnly.trim().toLowerCase(), message: err.message } });
+      } else {
+        setErrors({ emailOnly: err.message || 'No guest found for this email.' });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -211,22 +215,26 @@ export default function GuestJoin() {
                 <p className="text-gray-600 text-sm mb-4">
                   Already joined this bill? Enter your email to sign back in.
                 </p>
-                {errors.emailOnly && (
-                  <div className="flex items-center gap-1 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
-                    <AlertCircle size={16} /> {errors.emailOnly}
-                  </div>
-                )}
-                <input
-                  type="email"
-                  value={emailOnly}
-                  onChange={(e) => {
-                    setEmailOnly(e.target.value);
-                    setErrors((prev) => ({ ...prev, emailOnly: '' }));
-                  }}
-                  placeholder="Your email"
-                  className="w-full px-4 py-2.5 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] text-sm"
-                  autoComplete="email"
-                />
+                <div>
+                  <input
+                    type="email"
+                    value={emailOnly}
+                    onChange={(e) => {
+                      setEmailOnly(e.target.value);
+                      setErrors((prev) => ({ ...prev, emailOnly: '' }));
+                    }}
+                    placeholder="Your email"
+                    className={`w-full px-4 py-2.5 rounded-lg border-2 focus:outline-none focus:ring-2 text-sm ${
+                      errors.emailOnly ? 'border-red-500 focus:ring-red-300' : 'border-gray-300 focus:ring-[#06B6D4]'
+                    }`}
+                    autoComplete="email"
+                  />
+                  {errors.emailOnly && (
+                    <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                      <AlertCircle size={12} /> {errors.emailOnly}
+                    </div>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={submitting}
@@ -317,7 +325,10 @@ export default function GuestJoin() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep('email')}
+                  onClick={() => {
+                    setEmailOnly(formData.email);
+                    setStep('email');
+                  }}
                   className="text-[#06B6D4] hover:text-[#0891b2] text-sm font-semibold"
                 >
                   ← Back
